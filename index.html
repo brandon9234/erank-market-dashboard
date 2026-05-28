@@ -18,7 +18,8 @@
     </header>
 
     <nav class="tabs" aria-label="Dashboard sections">
-      <button class="tab active" data-view="overview">Overview</button>
+      <button class="tab active" data-view="opportunity">Opportunity</button>
+      <button class="tab" data-view="overview">Overview</button>
       <button class="tab" data-view="comparison">Comparison</button>
       <button class="tab" data-view="listings">Listings</button>
       <button class="tab" data-view="operations">Operations</button>
@@ -26,7 +27,48 @@
     </nav>
 
     <main>
-      <section id="overview" class="view active">
+      <section id="opportunity" class="view active">
+        <div id="opportunity-metrics" class="metric-grid"></div>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>MyMaravia Opportunity Command Center</h2>
+              <p id="opportunity-summary" class="subtle"></p>
+            </div>
+          </div>
+          <div id="opportunity-callout" class="callout"></div>
+          <div id="opportunity-score-chart" class="chart"></div>
+          <div id="opportunity-queue"></div>
+        </section>
+        <div class="grid two-wide">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Launch Queue</h2>
+            </div>
+            <div id="launch-queue"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>MyMaravia Baseline</h2>
+            </div>
+            <div id="mymaravia-baseline"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Intent x Product Matrix</h2>
+          </div>
+          <div id="intent-product-matrix"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Data Freshness And Export Path</h2>
+          </div>
+          <div id="opportunity-health"></div>
+        </section>
+      </section>
+
+      <section id="overview" class="view">
         <div id="metric-grid" class="metric-grid"></div>
         <div class="grid two">
           <section class="panel">
