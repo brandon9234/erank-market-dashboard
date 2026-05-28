@@ -13,14 +13,15 @@ const numericColumns = new Set([
   "Demand Score", "Cronk Research Fit", "Evidence Score", "Momentum Score", "Saturation Penalty",
   "Market Daily Sales", "Market 30D Sales", "Avg Daily Sales / Listing", "Current 7D Sales",
   "Current 30D Sales", "Current Avg Daily Sales", "SQL Daily Rows", "SQL Shops", "Receipts",
-  "Transactions", "Listings", "Reviews", "Launch Priority"
+  "Transactions", "Listings", "Reviews", "Launch Priority", "Tag Confidence"
 ]);
 
 const wrappedColumns = new Set([
   "Product Title", "Matched Product Categories", "Source / Context", "Counts / Metrics",
   "Blocker / Issue", "Next Action", "Notes", "Source Note", "Top Substrates", "Listing URL",
   "Product Bet", "Buyer Intent", "Why It Matters", "Launch Brief", "Suggested Listings",
-  "Primary Product Family", "Strategic Read", "Evidence Note", "Source", "Refresh Step"
+  "Primary Product Family", "Strategic Read", "Evidence Note", "Source", "Refresh Step",
+  "Production Tag", "Customization Tag", "Tag Evidence"
 ]);
 
 const plotConfig = { responsive: true, displayModeBar: false };
@@ -359,11 +360,19 @@ function renderOpportunity() {
 
 function renderListings() {
   const query = document.getElementById("listing-search").value.trim().toLowerCase();
+  const production = document.getElementById("production-filter").value;
   let rows = dashboard.listing.topListings || [];
+  if (production) {
+    rows = rows.filter(row => row["Production Tag"] === production);
+  }
   if (query) {
     rows = rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
   }
-  renderTable("top-listings", rows, ["Overall Rank", "Shop", "Product Title", "Product Category", "Est. 30D Sales", "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"], 80);
+  renderTable("top-listings", rows, [
+    "Overall Rank", "Shop", "Product Title", "Product Category", "Production Tag",
+    "Customization Tag", "Tag Confidence", "Tag Evidence", "Est. 30D Sales",
+    "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
+  ], 80);
 }
 
 function renderRaw() {
@@ -396,6 +405,23 @@ function initRawSelect() {
   renderRaw();
 }
 
+function initProductionFilter() {
+  const select = document.getElementById("production-filter");
+  const counts = new Map();
+  (dashboard.listing.topListings || []).forEach(row => {
+    const tag = row["Production Tag"] || "Unclassified";
+    counts.set(tag, (counts.get(tag) || 0) + 1);
+  });
+  [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .forEach(([tag, count]) => {
+      const option = document.createElement("option");
+      option.value = tag;
+      option.textContent = `${tag} (${count})`;
+      select.appendChild(option);
+    });
+}
+
 function renderAll() {
   document.getElementById("snapshot-note").innerHTML =
     `${escapeHtml(dashboard.meta.source)} Generated ${escapeHtml(dashboard.meta.generatedAt)} from cache modified ${escapeHtml(dashboard.meta.sourceWorkbookModifiedAt)}.`;
@@ -423,6 +449,7 @@ function renderAll() {
   renderTable("coverage-queue", dashboard.operations.coverageQueue, ["Shop", "eRank 7D Sales", "eRank 30D Sales", "Avg Daily Sales (30D)", "Has Tab", "Tab Status", "Review Ledger Rows", "Last Evidence Run", "Last Scrape Status", "Next Action"], 80);
   renderStatusTable("recent-runs", dashboard.automation.recentRuns, ["Status", "Run Timestamp", "Pipeline / Stage", "Automation Version", "Source / Context", "eRank Sales Date", "Counts / Metrics", "Blocker / Issue", "Next Action"], 60);
   renderTable("quality-table", dashboard.market.quality, ["Date", "Raw Rows", "Unique Shops", "Duplicate Shop-Date Pairs", "Raw Market Sales", "Deduped Market Sales", "Potential Inflation", "Likely Partial Final Day", "Source Files"], 120);
+  initProductionFilter();
   initRawSelect();
 }
 
@@ -433,6 +460,7 @@ async function boot() {
   renderAll();
   document.getElementById("top-shop-metric").addEventListener("change", renderTopShops);
   document.getElementById("listing-search").addEventListener("input", renderListings);
+  document.getElementById("production-filter").addEventListener("change", renderListings);
 }
 
 boot().catch(error => {
