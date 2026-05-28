@@ -1,6 +1,6 @@
 # Cronk Research
 
-Static GitHub Pages research snapshot generated from the cached eRank workbook plus the local SQLite market warehouse.
+Static GitHub Pages research snapshot generated from the cached eRank workbook.
 
 Regenerate from the parent project with the static snapshot builder:
 
@@ -8,16 +8,4 @@ Regenerate from the parent project with the static snapshot builder:
 python scripts/build_github_pages_snapshot.py
 ```
 
-Then add the SQL-backed Cronk Research opportunity layer:
-
-```bash
-python scripts/build_sql_opportunity_snapshot.py
-```
-
-For the frequent SQL-only refresh after review/eRank imports:
-
-```bash
-scripts/refresh_github_pages_opportunity.sh
-```
-
-The second step reads the current eRank SQLite database and Cronk Research Etsy API snapshot, then rewrites `github-pages-export/assets/data.json` with the Opportunity tab data. GitHub Pages stays static; the SQLite database remains local/private.
+Tracked listings include heuristic production tags so the Listings tab can be filtered by likely personalization method: CO2 laser engraving/cutting, UV print, sublimation/heat press, embroidery, vinyl/printed sticker, metal engraving/cutting, candle label print, jewelry fabrication, custom method unclear, or not customized/unclear.
