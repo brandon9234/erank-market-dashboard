@@ -544,9 +544,9 @@ function renderListings() {
   document.getElementById("listing-count").textContent =
     rows.length === allRows.length ? `Showing all ${total} listings` : `Showing ${count} of ${total} listings`;
   renderTable("top-listings", rows, [
-    "Overall Rank", "Thumbnail", "Shop", "Product Title", "Product Category", "Product Substrate Category",
+    "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Product Title", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
-    "Est. 30D Sales", "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
+    "Est. 30D Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
   ]);
 }
 
