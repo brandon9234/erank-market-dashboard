@@ -300,27 +300,27 @@ th.wrap {
 
 td.thumbnail-cell,
 th.thumbnail-cell {
-  width: 66px;
-  min-width: 66px;
-  max-width: 66px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
   text-align: center;
-  padding: 6px;
+  padding: 8px;
 }
 
 .listing-thumb-link {
   display: inline-flex;
-  width: 50px;
-  height: 50px;
+  width: 98px;
+  height: 98px;
   align-items: center;
   justify-content: center;
 }
 
 .listing-thumb {
-  width: 48px;
-  height: 48px;
+  width: 96px;
+  height: 96px;
   object-fit: cover;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: #f8fafc;
 }
 
