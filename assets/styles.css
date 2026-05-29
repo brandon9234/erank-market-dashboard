@@ -187,6 +187,43 @@ input {
   max-height: 520px;
   border: 1px solid var(--line);
   border-radius: 7px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  scrollbar-width: thin;
+}
+
+.table-wrap::-webkit-scrollbar,
+.table-scrollbar::-webkit-scrollbar {
+  height: 14px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb,
+.table-scrollbar::-webkit-scrollbar-thumb {
+  background: #9aa8a0;
+  border: 3px solid #edf2ee;
+  border-radius: 999px;
+}
+
+.table-wrap::-webkit-scrollbar-track,
+.table-scrollbar::-webkit-scrollbar-track {
+  background: #edf2ee;
+}
+
+.table-scrollbar {
+  display: none;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-bottom-left-radius: 7px;
+  border-bottom-right-radius: 7px;
+  background: #edf2ee;
+  scrollbar-width: thin;
+}
+
+.table-scrollbar-spacer {
+  height: 1px;
 }
 
 table {
