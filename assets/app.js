@@ -1,6 +1,7 @@
 let dashboard;
 let selectedCompany = "";
-const DATA_ASSET_VERSION = "company-profile-ask-20260529-2";
+let selectedCompanyProduction = "";
+const DATA_ASSET_VERSION = "review-corpus-20260529";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -20,7 +21,9 @@ const numericColumns = new Set([
   "MyMaravia Listings", "Current Product Categories", "Market Long Tails In Current Categories",
   "Market Long Tails", "Built Long Tails", "Needs Build", "Coverage %", "Top Open Daily Sales",
   "Recent Reviews", "Recent Avg Rating", "Tracked Listings", "Tracked Product Categories",
-  "Tracked Production Methods", "Tracked Est. Daily Sales", "Tracked Est. 30D Sales"
+  "Tracked Production Methods", "Tracked Est. Daily Sales", "Tracked Est. 30D Sales",
+  "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Listings",
+  "Review Corpus Avg Rating", "Review Evidence Count"
 ]);
 
 const wrappedColumns = new Set([
@@ -99,6 +102,16 @@ function companyLinkCell(value) {
   return `<button class="company-link" type="button" data-company="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
 }
 
+function productionTagName(value) {
+  return String(value || "Unclassified").trim();
+}
+
+function productionLinkCell(value) {
+  const tag = productionTagName(value);
+  const active = tag === selectedCompanyProduction ? " active" : "";
+  return `<button class="production-link${active}" type="button" data-production="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`;
+}
+
 function renderTable(targetId, rows, columns = null, limit = null) {
   const target = document.getElementById(targetId);
   if (!target) return;
@@ -125,6 +138,8 @@ function renderTable(targetId, rows, columns = null, limit = null) {
         ? thumbnailCell(row, col)
         : sourceLinkColumns.has(col)
           ? sourceLinksCell(row[col])
+        : targetId === "company-production" && col === "Production Tag"
+          ? productionLinkCell(row[col])
         : companyColumns.has(col)
           ? companyLinkCell(row[col])
         : col.toLowerCase().includes("url")
@@ -754,12 +769,15 @@ function buildCompanyProductRows(rows) {
   rows.forEach(row => {
     const category = comparisonCategory(row);
     if (!groups.has(category)) {
-      groups.set(category, { category, rows: [], daily: 0, thirty: 0 });
+      groups.set(category, { category, rows: [], daily: 0, thirty: 0, reviews: 0, reviews90: 0, reviews365: 0 });
     }
     const group = groups.get(category);
     group.rows.push(row);
     group.daily += numericCell(row, "Est. Daily Sales");
     group.thirty += numericCell(row, "Est. 30D Sales");
+    group.reviews += numericCell(row, "Review Corpus Count");
+    group.reviews90 += numericCell(row, "Review Corpus 90D");
+    group.reviews365 += numericCell(row, "Review Corpus 365D");
   });
   return [...groups.values()].map(group => {
     const top = sortRowsByMetric(group.rows, "Est. Daily Sales")[0] || {};
@@ -767,6 +785,9 @@ function buildCompanyProductRows(rows) {
       "Product Substrate Category": group.category,
       "Est. Daily Sales": Number(group.daily.toFixed(1)),
       "Est. 30D Sales": Number(group.thirty.toFixed(1)),
+      "Review Corpus Count": group.reviews,
+      "Review Corpus 90D": group.reviews90,
+      "Review Corpus 365D": group.reviews365,
       "Listing Count": group.rows.length,
       "Top Listing": top["Product Title"] || ""
     };
@@ -778,13 +799,16 @@ function buildCompanyProductionRows(rows) {
   rows.forEach(row => {
     const tag = row["Production Tag"] || "Unclassified";
     if (!groups.has(tag)) {
-      groups.set(tag, { tag, rows: [], categories: new Set(), daily: 0, thirty: 0 });
+      groups.set(tag, { tag, rows: [], categories: new Set(), daily: 0, thirty: 0, reviews: 0, reviews90: 0, reviews365: 0 });
     }
     const group = groups.get(tag);
     group.rows.push(row);
     group.categories.add(comparisonCategory(row));
     group.daily += numericCell(row, "Est. Daily Sales");
     group.thirty += numericCell(row, "Est. 30D Sales");
+    group.reviews += numericCell(row, "Review Corpus Count");
+    group.reviews90 += numericCell(row, "Review Corpus 90D");
+    group.reviews365 += numericCell(row, "Review Corpus 365D");
   });
   return [...groups.values()].map(group => {
     const top = sortRowsByMetric(group.rows, "Est. Daily Sales")[0] || {};
@@ -792,6 +816,9 @@ function buildCompanyProductionRows(rows) {
       "Production Tag": group.tag,
       "Est. Daily Sales": Number(group.daily.toFixed(1)),
       "Est. 30D Sales": Number(group.thirty.toFixed(1)),
+      "Review Corpus Count": group.reviews,
+      "Review Corpus 90D": group.reviews90,
+      "Review Corpus 365D": group.reviews365,
       "Listing Count": group.rows.length,
       "Product Categories": [...group.categories].sort().slice(0, 8).join(", "),
       "Top Listing": top["Product Title"] || ""
@@ -808,9 +835,16 @@ function renderCompanyProfile() {
   const listings = sortRowsByMetric(companyRows(company), "Est. Daily Sales");
   const productRows = buildCompanyProductRows(listings);
   const productionRows = buildCompanyProductionRows(listings);
+  if (selectedCompanyProduction && !productionRows.some(row => row["Production Tag"] === selectedCompanyProduction)) {
+    selectedCompanyProduction = "";
+  }
+  const visibleListings = selectedCompanyProduction
+    ? listings.filter(row => productionTagName(row["Production Tag"]) === selectedCompanyProduction)
+    : listings;
   const topShop = companyLookup(dashboard.market.topShops || []).get(company) || {};
   const coverage = companyLookup(dashboard.operations.coverageQueue || []).get(company) || {};
   const trend = companyLookup(dashboard.comparison.shopTrends || []).get(company) || {};
+  const corpusShop = companyLookup(dashboard.reviewCorpus?.shopRollup || []).get(company) || {};
   const chartRows = (dashboard.comparison.shopTrendChart || []).filter(row => companyName(row.Shop) === company);
   const trackedDaily = listings.reduce((sum, row) => sum + numericCell(row, "Est. Daily Sales"), 0);
   const trackedThirty = listings.reduce((sum, row) => sum + numericCell(row, "Est. 30D Sales"), 0);
@@ -826,7 +860,7 @@ function renderCompanyProfile() {
     ["Tracked 30D sales", fmt(trackedThirty, "Tracked Est. 30D Sales")],
     ["Tracked daily sales", fmt(trackedDaily, "Tracked Est. Daily Sales")],
     ["Product categories", fmt(categories.size, "Tracked Product Categories")],
-    ["Trend", trend.Trend || "Unavailable"]
+    ["Corpus reviews", fmt(corpusShop["Review Corpus Count"], "Review Corpus Count") || "0"]
   ].map(([label, value]) => metric(label, value)).join("");
 
   const eRank30 = numericCell(coverage, "eRank 30D Sales") || numericCell(topShop, "30D Sales");
@@ -836,6 +870,11 @@ function renderCompanyProfile() {
     `${fmt(productionRows.length, "Listing Count")} production methods`
   ];
   if (eRank30) calloutBits.push(`${fmt(eRank30, "30D Sales")} eRank 30-day sales`);
+  if (numericCell(corpusShop, "Review Corpus Count")) {
+    calloutBits.push(
+      `${fmt(corpusShop["Review Corpus Count"], "Review Corpus Count")} full-corpus reviews, ${fmt(corpusShop["Review Corpus 90D"], "Review Corpus 90D")} in the latest 90 days`
+    );
+  }
   if (views || favorites || recentReviews) {
     calloutBits.push(`${fmt(views, "Views")} views, ${fmt(favorites, "Favorites")} favorites, ${fmt(recentReviews, "Recent Reviews")} recent reviews in visible listing data`);
   }
@@ -853,6 +892,12 @@ function renderCompanyProfile() {
     "eRank 30D Sales": coverage["eRank 30D Sales"] ?? topShop["30D Sales"] ?? "",
     "Avg Daily Sales (30D)": coverage["Avg Daily Sales (30D)"] ?? topShop["Avg Daily Sales (30D)"] ?? "",
     "Active Listings": topShop["Active Listings"] ?? "",
+    "Review Corpus Count": corpusShop["Review Corpus Count"] ?? "",
+    "Review Corpus 90D": corpusShop["Review Corpus 90D"] ?? "",
+    "Review Corpus 365D": corpusShop["Review Corpus 365D"] ?? "",
+    "Review Corpus Listings": corpusShop["Review Corpus Listings"] ?? "",
+    "Review Corpus Avg Rating": corpusShop["Review Corpus Avg Rating"] ?? "",
+    "Review Corpus Latest ISO": corpusShop["Review Corpus Latest ISO"] ?? "",
     "Trend": trend.Trend || "",
     "Recent Avg Daily Sales": trend["Recent Avg Daily Sales"] ?? "",
     "Prior Avg Daily Sales": trend["Prior Avg Daily Sales"] ?? "",
@@ -890,7 +935,7 @@ function renderCompanyProfile() {
 
   if (productRows.length) {
     renderBar("company-product-chart", productRows, "Est. Daily Sales", "Product Substrate Category", 15, "#1f5fbf");
-    renderTable("company-products", productRows, ["Product Substrate Category", "Est. Daily Sales", "Est. 30D Sales", "Listing Count", "Top Listing"], 80);
+    renderTable("company-products", productRows, ["Product Substrate Category", "Est. Daily Sales", "Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Listing Count", "Top Listing"], 80);
   } else {
     document.getElementById("company-product-chart").innerHTML = `<div class="empty">No product rows are available for this company.</div>`;
     document.getElementById("company-products").innerHTML = "";
@@ -898,18 +943,28 @@ function renderCompanyProfile() {
 
   if (productionRows.length) {
     renderBar("company-production-chart", productionRows, "Est. Daily Sales", "Production Tag", 15, "#0f766e");
-    renderTable("company-production", productionRows, ["Production Tag", "Est. Daily Sales", "Est. 30D Sales", "Listing Count", "Product Categories", "Top Listing"], 80);
+    renderTable("company-production", productionRows, ["Production Tag", "Est. Daily Sales", "Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Listing Count", "Product Categories", "Top Listing"], 80);
   } else {
     document.getElementById("company-production-chart").innerHTML = `<div class="empty">No production-method rows are available for this company.</div>`;
     document.getElementById("company-production").innerHTML = "";
   }
 
-  renderTable("company-listings", listings, [
+  const filterNote = document.getElementById("company-listing-filter");
+  if (filterNote) {
+    filterNote.textContent = selectedCompanyProduction
+      ? `Showing ${fmt(visibleListings.length, "Listing Count")} ${selectedCompanyProduction} listings for ${company}.`
+      : `Showing all ${fmt(listings.length, "Listing Count")} tracked listings for ${company}.`;
+  }
+  const clearProduction = document.getElementById("company-production-clear");
+  if (clearProduction) clearProduction.hidden = !selectedCompanyProduction;
+
+  renderTable("company-listings", visibleListings, [
     "Overall Rank", "Thumbnail", "Est. Daily Sales", "Est. 30D Sales", "Product Title",
     "Product Category", "Product Substrate Category", "Original Broad Category", "Production Tag",
     "Customization Tag", "Tag Confidence", "Tag Evidence", "Evidence Confidence", "Last Review ISO",
     "Price", "Views", "Favorites", "Recent 180D Sales", "Recent 180D Revenue", "Recent Reviews",
-    "Recent Avg Rating", "Blank / Generic Sources", "Listing URL"
+    "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
+    "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Blank / Generic Sources", "Listing URL"
   ], 300);
 
   requestAnimationFrame(updateAllBottomScrollbars);
@@ -918,6 +973,7 @@ function renderCompanyProfile() {
 function openCompanyProfile(company) {
   selectedCompany = companyName(company);
   if (!selectedCompany) return;
+  selectedCompanyProduction = "";
   renderCompanyOptions();
   activateView("company");
   renderCompanyProfile();
@@ -958,7 +1014,8 @@ function renderOpportunity() {
 
   renderTable("opportunity-queue", queue, [
     "Launch Priority", "Product Bet", "Buyer Intent", "Opportunity Score", "Market Daily Sales",
-    "Demand Score", "Cronk Research Fit", "Evidence Score", "Saturation Penalty", "Why It Matters"
+    "Demand Score", "Cronk Research Fit", "Evidence Score", "Review Corpus Count",
+    "Review Evidence Count", "Saturation Penalty", "Why It Matters"
   ], 40);
 
   renderTable("launch-queue", launches, [
@@ -1023,6 +1080,7 @@ function renderMyMaravia() {
 
   renderTable("mymaravia-listings", my.myListings || [], [
     "Thumbnail", "Product Category", "Est. Daily Sales", "Product Title", "Recent 180D Sales",
+    "Recent Reviews", "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D",
     "Views", "Favorites", "Tags Count", "State", "Listing URL"
   ], 200);
 }
@@ -1046,7 +1104,8 @@ function renderListings() {
   renderTable("top-listings", rows, [
     "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Blank / Generic Sources", "Product Title", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
-    "Est. 30D Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
+    "Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
+    "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Evidence Confidence", "Last Review ISO", "Listing URL"
   ]);
 }
 
@@ -1066,7 +1125,8 @@ function renderAskScope() {
   const shops = new Set(rows.map(row => row.Shop).filter(Boolean)).size;
   const categories = new Set(rows.map(row => comparisonCategory(row)).filter(Boolean)).size;
   const openLongTails = (dashboard.myMaravia?.longTailQueue || []).filter(row => row.Status === "Needs build").length;
-  const text = `${fmt(rows.length, "Listing Count")} listings, ${fmt(shops, "Shop Count")} shops, ${fmt(categories, "Listing Count")} categories, ${fmt(openLongTails, "Listing Count")} open MyMaravia long tails.`;
+  const corpusReviews = dashboard.reviewCorpus?.totalReviews || 0;
+  const text = `${fmt(rows.length, "Listing Count")} listings, ${fmt(shops, "Shop Count")} shops, ${fmt(categories, "Listing Count")} categories, ${fmt(openLongTails, "Listing Count")} open MyMaravia long tails, ${fmt(corpusReviews, "Review Corpus Count")} review-corpus records.`;
   const scope = document.getElementById("ask-scope");
   if (scope) scope.textContent = text;
 }
@@ -1328,19 +1388,67 @@ function answerTrendQuestion(question) {
 }
 
 function answerReviewQuestion(question) {
-  const rows = sortRowsByMetric(applyQuestionScope(getListingRows(), question), "Recent Reviews")
-    .filter(row => numericCell(row, "Recent Reviews") || row["Recent Avg Rating"]);
-  const totalReviews = rows.reduce((sum, row) => sum + numericCell(row, "Recent Reviews"), 0);
+  const corpus = dashboard.reviewCorpus || {};
+  const q = normalizeQuestion(question);
+  if (/how many|total|all|being used|use all|used/.test(q) && !/listing|product|category|substrate|led|nameplate|shop|company|seller|competitor/.test(q)) {
+    const shopRows = (corpus.shopRollup || [])
+      .slice()
+      .sort((a, b) => numericCell(b, "Review Corpus Count") - numericCell(a, "Review Corpus Count"));
+    return result(
+      "Review corpus answer",
+      `${fmt(corpus.totalReviews, "Review Corpus Count")} full-corpus review records are used in the backend aggregate calculations.`,
+      [
+        `${fmt(corpus.uniqueShops, "Shop Count")} shops and ${fmt(corpus.uniqueListingUrls, "Listing Count")} listing URLs are represented.`,
+        `${fmt(corpus.matchedCurrentListingReviews, "Review Corpus Count")} reviews match current dashboard listing URLs; ${fmt(corpus.unmatchedReviewRecords, "Review Corpus Count")} unmatched records still feed overall/shop corpus rollups.`,
+        `Latest corpus review date: ${corpus.latestReviewISO || "unavailable"}.`
+      ],
+      shopRows,
+      ["Shop", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Review Corpus Listings"],
+      60
+    );
+  }
+  if (/shop|company|seller|competitor/.test(q)) {
+    const shopRows = filterRowsByTokens(corpus.shopRollup || [], askTokens(question))
+      .sort((a, b) => numericCell(b, "Review Corpus Count") - numericCell(a, "Review Corpus Count"));
+    const leader = shopRows[0];
+    return result(
+      "Review corpus answer",
+      `The UI now uses ${fmt(corpus.totalReviews, "Review Corpus Count")} full-corpus review records for aggregate calculations. ${leader ? `${leader.Shop} has the largest matching corpus count at ${fmt(leader["Review Corpus Count"], "Review Corpus Count")} reviews.` : "No matching shop rollup rows were found."}`,
+      [
+        `${fmt(corpus.uniqueShops, "Shop Count")} shops and ${fmt(corpus.uniqueListingUrls, "Listing Count")} listing URLs are represented in the review corpus.`,
+        `${fmt(corpus.matchedCurrentListingReviews, "Review Corpus Count")} reviews match current dashboard listing URLs; unmatched records still feed overall/shop corpus rollups.`,
+        `Review text and buyer names are not shipped to the public UI.`
+      ],
+      shopRows,
+      ["Shop", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Review Corpus Listings"],
+      60
+    );
+  }
+
+  const rows = sortRowsByMetric(applyQuestionScope(getListingRows(), question), "Review Corpus Count")
+    .filter(row => numericCell(row, "Review Corpus Count") || numericCell(row, "Recent Reviews") || row["Recent Avg Rating"]);
+  const totalScopedCorpus = rows.reduce((sum, row) => sum + numericCell(row, "Review Corpus Count"), 0);
   const leader = rows[0];
   if (!rows.length) {
-    return result("Review answer", "This dashboard snapshot only exposes review counts and average rating where the Etsy API listing snapshot provided them. Public review text and review photos are not in this dashboard payload.");
+    return result(
+      "Review corpus answer",
+      `The UI now uses ${fmt(corpus.totalReviews, "Review Corpus Count")} full-corpus review records, but none of the current listing rows match this specific question.`,
+      [
+        `${fmt(corpus.uniqueShops, "Shop Count")} shops and ${fmt(corpus.uniqueListingUrls, "Listing Count")} listing URLs are represented in the review corpus.`,
+        `Raw review text, buyer names, and photos are not published.`
+      ]
+    );
   }
   return result(
-    "Review answer",
-    `${fmt(totalReviews, "Recent Reviews")} recent reviews are visible in this scope. ${leader.Shop || "The leading row"} has the highest visible review count at ${fmt(leader["Recent Reviews"], "Recent Reviews")} reviews and ${fmt(leader["Recent Avg Rating"], "Recent Avg Rating")} average rating.`,
-    [`This is listing-level review summary data, not full review text or customer photos.`],
+    "Review corpus answer",
+    `${fmt(totalScopedCorpus, "Review Corpus Count")} full-corpus reviews match this listing scope. ${leader.Shop || "The leading row"} has the highest matching listing at ${fmt(leader["Review Corpus Count"], "Review Corpus Count")} corpus reviews.`,
+    [
+      `${fmt(corpus.totalReviews, "Review Corpus Count")} total review records are used in the backend aggregates.`,
+      `${fmt(corpus.matchedCurrentListingReviews, "Review Corpus Count")} records match current dashboard listing URLs.`,
+      `Rows are sorted by full-corpus review count.`
+    ],
     rows,
-    ["Shop", "Product Category", "Product Title", "Recent Reviews", "Recent Avg Rating", "Est. Daily Sales", "Listing URL"],
+    ["Shop", "Product Category", "Product Substrate Category", "Product Title", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Recent Reviews", "Recent Avg Rating", "Est. Daily Sales", "Listing URL"],
     50
   );
 }
@@ -1537,6 +1645,7 @@ function initCompanyProfile() {
   if (select.dataset.bound !== "true") {
     select.addEventListener("change", () => {
       selectedCompany = select.value;
+      selectedCompanyProduction = "";
       renderCompanyProfile();
     });
     select.dataset.bound = "true";
@@ -1550,11 +1659,29 @@ function initCompanyProfile() {
 
   if (document.body.dataset.companyLinksBound !== "true") {
     document.addEventListener("click", event => {
-      const target = event.target.closest(".company-link");
-      if (!target) return;
-      openCompanyProfile(target.dataset.company || target.textContent);
+      const companyTarget = event.target.closest(".company-link");
+      if (companyTarget) {
+        openCompanyProfile(companyTarget.dataset.company || companyTarget.textContent);
+        return;
+      }
+
+      const productionTarget = event.target.closest(".production-link");
+      if (productionTarget) {
+        selectedCompanyProduction = productionTarget.dataset.production || productionTarget.textContent || "";
+        renderCompanyProfile();
+        document.getElementById("company-listings")?.scrollIntoView({ block: "start" });
+      }
     });
     document.body.dataset.companyLinksBound = "true";
+  }
+
+  const clearProduction = document.getElementById("company-production-clear");
+  if (clearProduction && clearProduction.dataset.bound !== "true") {
+    clearProduction.addEventListener("click", () => {
+      selectedCompanyProduction = "";
+      renderCompanyProfile();
+    });
+    clearProduction.dataset.bound = "true";
   }
 
   renderCompanyProfile();
@@ -1611,9 +1738,9 @@ function renderAll() {
   renderAskScope();
   initAsk();
   renderBar("category-rollup-chart", dashboard.listing.categoryRollup || [], "Total Est. Daily Sales", "Product Substrate Category", 15, "#1f5fbf");
-  renderTable("category-rollup-table", dashboard.listing.categoryRollup, ["Product Substrate Category", "Total Est. Daily Sales", "Total Est. 30D Sales", "Listing Count", "Shop Count"], 40);
+  renderTable("category-rollup-table", dashboard.listing.categoryRollup, ["Product Substrate Category", "Total Est. Daily Sales", "Total Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Listings", "Listing Count", "Shop Count"], 40);
   renderBar("demand-summary-chart", dashboard.listing.demandSummary || [], "Total Est. Daily Sales", "Demand Intent Cluster", 20, "#0f766e");
-  renderTable("demand-summary-table", dashboard.listing.demandSummary, ["Demand Intent Cluster", "Total Est. Daily Sales", "Listing Count", "Review Count", "Avg Daily Sales / Listing", "Shop Count"], 50);
+  renderTable("demand-summary-table", dashboard.listing.demandSummary, ["Demand Intent Cluster", "Total Est. Daily Sales", "Listing Count", "Review Count", "Review Corpus Count", "Review Corpus 90D", "Review Corpus Listings", "Avg Daily Sales / Listing", "Shop Count"], 50);
   renderTable("coverage-queue", dashboard.operations.coverageQueue, ["Shop", "eRank 7D Sales", "eRank 30D Sales", "Avg Daily Sales (30D)", "Has Tab", "Tab Status", "Review Ledger Rows", "Last Evidence Run", "Last Scrape Status", "Next Action"], 80);
   renderStatusTable("recent-runs", dashboard.automation.recentRuns, ["Status", "Run Timestamp", "Pipeline / Stage", "Automation Version", "Source / Context", "eRank Sales Date", "Counts / Metrics", "Blocker / Issue", "Next Action"], 60);
   renderTable("quality-table", dashboard.market.quality, ["Date", "Raw Rows", "Unique Shops", "Duplicate Shop-Date Pairs", "Raw Market Sales", "Deduped Market Sales", "Potential Inflation", "Likely Partial Final Day", "Source Files"], 120);
