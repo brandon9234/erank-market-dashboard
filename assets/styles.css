@@ -183,7 +183,8 @@ input {
 }
 
 .table-wrap {
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   max-height: 520px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -192,38 +193,73 @@ input {
   scrollbar-width: thin;
 }
 
-.table-wrap::-webkit-scrollbar,
-.table-scrollbar::-webkit-scrollbar {
-  height: 14px;
+.table-wrap::-webkit-scrollbar:horizontal {
+  height: 0;
 }
 
-.table-wrap::-webkit-scrollbar-thumb,
-.table-scrollbar::-webkit-scrollbar-thumb {
+.table-wrap::-webkit-scrollbar:vertical {
+  width: 10px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb:vertical {
   background: #9aa8a0;
-  border: 3px solid #edf2ee;
+  border: 2px solid #edf2ee;
   border-radius: 999px;
-}
-
-.table-wrap::-webkit-scrollbar-track,
-.table-scrollbar::-webkit-scrollbar-track {
-  background: #edf2ee;
 }
 
 .table-scrollbar {
   display: none;
-  overflow-x: scroll;
-  overflow-y: hidden;
-  height: 18px;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 7px 8px;
   border: 1px solid var(--line);
   border-top: 0;
   border-bottom-left-radius: 7px;
   border-bottom-right-radius: 7px;
   background: #edf2ee;
-  scrollbar-width: thin;
 }
 
-.table-scrollbar-spacer {
-  height: 1px;
+.table-scroll-button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 24px;
+  border: 1px solid #b8c4bb;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.table-scroll-button:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.table-scrollbar-track {
+  position: relative;
+  flex: 1 1 auto;
+  height: 14px;
+  border-radius: 999px;
+  background: #d7dfd8;
+  box-shadow: inset 0 0 0 1px #c5d0c7;
+}
+
+.table-scrollbar-thumb {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  height: 10px;
+  min-width: 44px;
+  border-radius: 999px;
+  background: #244c66;
+  cursor: grab;
+}
+
+.table-scrollbar-thumb.dragging {
+  cursor: grabbing;
+  background: #0b7a63;
 }
 
 table {
