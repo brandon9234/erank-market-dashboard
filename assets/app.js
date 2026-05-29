@@ -437,6 +437,34 @@ function getListingRows() {
   return Array.from(byKey.values());
 }
 
+function numericCell(row, column) {
+  const value = row[column];
+  if (typeof value === "number") return value;
+  const parsed = Number(String(value ?? "").replace(/[$,%]/g, "").replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortListingRows(rows) {
+  const sort = document.getElementById("listing-sort").value;
+  const sortMap = {
+    "daily-desc": ["Est. Daily Sales", "desc"],
+    "daily-asc": ["Est. Daily Sales", "asc"],
+    "thirty-desc": ["Est. 30D Sales", "desc"],
+    "thirty-asc": ["Est. 30D Sales", "asc"]
+  };
+  const config = sortMap[sort];
+  if (!config) return rows;
+  const [column, direction] = config;
+  return rows.slice().sort((a, b) => {
+    const delta = numericCell(a, column) - numericCell(b, column);
+    const ordered = direction === "asc" ? delta : -delta;
+    if (ordered) return ordered;
+    return numericCell(a, "Overall Rank") - numericCell(b, "Overall Rank") ||
+      String(a.Shop || "").localeCompare(String(b.Shop || "")) ||
+      String(a["Product Title"] || "").localeCompare(String(b["Product Title"] || ""));
+  });
+}
+
 function renderTopShops() {
   const metricName = document.getElementById("top-shop-metric").value;
   const rows = [...dashboard.market.topShops].sort((a, b) => Number(b[metricName] || 0) - Number(a[metricName] || 0));
@@ -509,6 +537,7 @@ function renderListings() {
   if (query) {
     rows = rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
   }
+  rows = sortListingRows(rows);
   renderTable("top-listings", rows, [
     "Overall Rank", "Thumbnail", "Shop", "Product Title", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
@@ -603,6 +632,7 @@ async function boot() {
   document.getElementById("top-shop-metric").addEventListener("change", renderTopShops);
   document.getElementById("listing-search").addEventListener("input", renderListings);
   document.getElementById("production-filter").addEventListener("change", renderListings);
+  document.getElementById("listing-sort").addEventListener("change", renderListings);
 }
 
 boot().catch(error => {
