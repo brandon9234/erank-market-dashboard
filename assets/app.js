@@ -1,5 +1,5 @@
 let dashboard;
-const DATA_ASSET_VERSION = "mymaravia-led-20260529";
+const DATA_ASSET_VERSION = "listing-thumbnails-20260529";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -26,6 +26,8 @@ const wrappedColumns = new Set([
   "Product Substrate Category", "Original Broad Category", "Category Aliases", "Production Tag",
   "Customization Tag", "Tag Evidence"
 ]);
+
+const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail"]);
 
 const plotConfig = { responsive: true, displayModeBar: false };
 
@@ -56,6 +58,14 @@ function linkCell(value) {
   return `<a href="${escapeHtml(text)}" target="_blank" rel="noreferrer">${label}</a>`;
 }
 
+function thumbnailCell(row, column) {
+  const src = String(row[column] ?? "");
+  if (!/^https?:\/\//i.test(src)) return "";
+  const href = String(row["Listing URL"] || src);
+  const title = String(row["Product Title"] || "Listing thumbnail");
+  return `<a class="listing-thumb-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer"><img class="listing-thumb" src="${escapeHtml(src)}" alt="${escapeHtml(title)}" loading="lazy"></a>`;
+}
+
 function renderTable(targetId, rows, columns = null, limit = null) {
   const target = document.getElementById(targetId);
   if (!target) return;
@@ -65,11 +75,24 @@ function renderTable(targetId, rows, columns = null, limit = null) {
     return;
   }
   const cols = columns || Object.keys(data[0]);
-  const header = cols.map(col => `<th class="${wrappedColumns.has(col) ? "wrap" : ""}">${escapeHtml(col)}</th>`).join("");
+  const header = cols.map(col => {
+    const cls = [
+      wrappedColumns.has(col) ? "wrap" : "",
+      thumbnailColumns.has(col) ? "thumbnail-cell" : ""
+    ].filter(Boolean).join(" ");
+    return `<th class="${cls}">${escapeHtml(col)}</th>`;
+  }).join("");
   const body = data.map(row => {
     const cells = cols.map(col => {
-      const cls = wrappedColumns.has(col) ? "wrap" : "";
-      const value = col.toLowerCase().includes("url") ? linkCell(row[col]) : escapeHtml(fmt(row[col], col));
+      const cls = [
+        wrappedColumns.has(col) ? "wrap" : "",
+        thumbnailColumns.has(col) ? "thumbnail-cell" : ""
+      ].filter(Boolean).join(" ");
+      const value = thumbnailColumns.has(col)
+        ? thumbnailCell(row, col)
+        : col.toLowerCase().includes("url")
+          ? linkCell(row[col])
+          : escapeHtml(fmt(row[col], col));
       return `<td class="${cls}">${value}</td>`;
     }).join("");
     return `<tr>${cells}</tr>`;
@@ -487,7 +510,7 @@ function renderListings() {
     rows = rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
   }
   renderTable("top-listings", rows, [
-    "Overall Rank", "Shop", "Product Title", "Product Category", "Product Substrate Category",
+    "Overall Rank", "Thumbnail", "Shop", "Product Title", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
     "Est. 30D Sales", "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
   ], 80);

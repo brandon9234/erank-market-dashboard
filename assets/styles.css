@@ -298,6 +298,32 @@ th.wrap {
   min-width: 220px;
 }
 
+td.thumbnail-cell,
+th.thumbnail-cell {
+  width: 66px;
+  min-width: 66px;
+  max-width: 66px;
+  text-align: center;
+  padding: 6px;
+}
+
+.listing-thumb-link {
+  display: inline-flex;
+  width: 50px;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+}
+
+.listing-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
