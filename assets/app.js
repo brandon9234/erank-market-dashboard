@@ -530,7 +530,8 @@ function renderOpportunity() {
 function renderListings() {
   const query = document.getElementById("listing-search").value.trim().toLowerCase();
   const production = document.getElementById("production-filter").value;
-  let rows = getListingRows();
+  const allRows = getListingRows();
+  let rows = allRows;
   if (production) {
     rows = rows.filter(row => row["Production Tag"] === production);
   }
@@ -538,11 +539,15 @@ function renderListings() {
     rows = rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
   }
   rows = sortListingRows(rows);
+  const count = fmt(rows.length, "Listing Count");
+  const total = fmt(allRows.length, "Listing Count");
+  document.getElementById("listing-count").textContent =
+    rows.length === allRows.length ? `Showing all ${total} listings` : `Showing ${count} of ${total} listings`;
   renderTable("top-listings", rows, [
     "Overall Rank", "Thumbnail", "Shop", "Product Title", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
     "Est. 30D Sales", "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
-  ], 80);
+  ]);
 }
 
 function renderRaw() {
