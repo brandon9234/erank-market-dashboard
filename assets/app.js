@@ -13,7 +13,8 @@ const numericColumns = new Set([
   "Demand Score", "Cronk Research Fit", "Evidence Score", "Momentum Score", "Saturation Penalty",
   "Market Daily Sales", "Market 30D Sales", "Avg Daily Sales / Listing", "Current 7D Sales",
   "Current 30D Sales", "Current Avg Daily Sales", "SQL Daily Rows", "SQL Shops", "Receipts",
-  "Transactions", "Listings", "Reviews", "Launch Priority", "Tag Confidence"
+  "Transactions", "Listings", "Reviews", "Launch Priority", "Tag Confidence",
+  "Price", "Views", "Favorites", "Tags Count", "Recent 180D Sales", "Recent 180D Revenue"
 ]);
 
 const wrappedColumns = new Set([
@@ -71,7 +72,54 @@ function renderTable(targetId, rows, columns = null, limit = null) {
     }).join("");
     return `<tr>${cells}</tr>`;
   }).join("");
-  target.innerHTML = `<div class="table-wrap"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+  target.innerHTML = `<div class="table-wrap"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div><div class="table-scrollbar" aria-hidden="true"><div class="table-scrollbar-spacer"></div></div>`;
+  syncBottomScrollbar(target);
+}
+
+function syncBottomScrollbar(target) {
+  const wrap = target.querySelector(".table-wrap");
+  const table = target.querySelector("table");
+  const bar = target.querySelector(".table-scrollbar");
+  const spacer = target.querySelector(".table-scrollbar-spacer");
+  if (!wrap || !table || !bar || !spacer) return;
+
+  let syncing = false;
+
+  wrap.addEventListener("scroll", () => {
+    if (syncing) return;
+    syncing = true;
+    bar.scrollLeft = wrap.scrollLeft;
+    syncing = false;
+  });
+
+  bar.addEventListener("scroll", () => {
+    if (syncing) return;
+    syncing = true;
+    wrap.scrollLeft = bar.scrollLeft;
+    syncing = false;
+  });
+
+  requestAnimationFrame(() => updateBottomScrollbar(target));
+  setTimeout(() => updateBottomScrollbar(target), 100);
+}
+
+function updateBottomScrollbar(target) {
+  const wrap = target.querySelector(".table-wrap");
+  const table = target.querySelector("table");
+  const bar = target.querySelector(".table-scrollbar");
+  const spacer = target.querySelector(".table-scrollbar-spacer");
+  if (!wrap || !table || !bar || !spacer) return;
+
+  spacer.style.width = `${table.scrollWidth}px`;
+  bar.style.display = table.scrollWidth > wrap.clientWidth ? "block" : "none";
+  bar.scrollLeft = wrap.scrollLeft;
+}
+
+function updateAllBottomScrollbars() {
+  document.querySelectorAll(".table-wrap").forEach(wrap => {
+    const target = wrap.parentElement;
+    if (target) updateBottomScrollbar(target);
+  });
 }
 
 function statusBadge(value) {
@@ -296,6 +344,20 @@ function renderBar(targetId, rows, xKey, yKey, limit = 15, color = "#1f5fbf") {
   }, plotConfig);
 }
 
+function getListingRows() {
+  const rows = [
+    ...(dashboard.listing.topListings || []),
+    ...(dashboard.listing.myShopListings || [])
+  ];
+  const seen = new Set();
+  return rows.filter(row => {
+    const key = `${row.Shop || ""}|${row["Listing URL"] || row["Product Title"] || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function renderTopShops() {
   const metricName = document.getElementById("top-shop-metric").value;
   const rows = [...dashboard.market.topShops].sort((a, b) => Number(b[metricName] || 0) - Number(a[metricName] || 0));
@@ -361,7 +423,7 @@ function renderOpportunity() {
 function renderListings() {
   const query = document.getElementById("listing-search").value.trim().toLowerCase();
   const production = document.getElementById("production-filter").value;
-  let rows = dashboard.listing.topListings || [];
+  let rows = getListingRows();
   if (production) {
     rows = rows.filter(row => row["Production Tag"] === production);
   }
@@ -389,6 +451,7 @@ function setupTabs() {
       button.classList.add("active");
       document.getElementById(button.dataset.view).classList.add("active");
       window.dispatchEvent(new Event("resize"));
+      requestAnimationFrame(updateAllBottomScrollbars);
     });
   });
 }
@@ -408,7 +471,7 @@ function initRawSelect() {
 function initProductionFilter() {
   const select = document.getElementById("production-filter");
   const counts = new Map();
-  (dashboard.listing.topListings || []).forEach(row => {
+  getListingRows().forEach(row => {
     const tag = row["Production Tag"] || "Unclassified";
     counts.set(tag, (counts.get(tag) || 0) + 1);
   });
