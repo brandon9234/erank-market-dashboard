@@ -22,7 +22,8 @@ const wrappedColumns = new Set([
   "Blocker / Issue", "Next Action", "Notes", "Source Note", "Top Substrates", "Listing URL",
   "Product Bet", "Buyer Intent", "Why It Matters", "Launch Brief", "Suggested Listings",
   "Primary Product Family", "Strategic Read", "Evidence Note", "Source", "Refresh Step",
-  "Production Tag", "Customization Tag", "Tag Evidence"
+  "Product Substrate Category", "Original Broad Category", "Category Aliases", "Production Tag",
+  "Customization Tag", "Tag Evidence"
 ]);
 
 const plotConfig = { responsive: true, displayModeBar: false };
@@ -72,31 +73,63 @@ function renderTable(targetId, rows, columns = null, limit = null) {
     }).join("");
     return `<tr>${cells}</tr>`;
   }).join("");
-  target.innerHTML = `<div class="table-wrap"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div><div class="table-scrollbar" aria-hidden="true"><div class="table-scrollbar-spacer"></div></div>`;
+  target.innerHTML = tableShell(header, body);
   syncBottomScrollbar(target);
+}
+
+function tableShell(header, body) {
+  return `<div class="table-wrap"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div><div class="table-scrollbar" role="group" aria-label="Horizontal table scroll"><button class="table-scroll-button" type="button" data-scroll-dir="-1" aria-label="Scroll table left">&lt;</button><div class="table-scrollbar-track"><div class="table-scrollbar-thumb"></div></div><button class="table-scroll-button" type="button" data-scroll-dir="1" aria-label="Scroll table right">&gt;</button></div>`;
 }
 
 function syncBottomScrollbar(target) {
   const wrap = target.querySelector(".table-wrap");
   const table = target.querySelector("table");
   const bar = target.querySelector(".table-scrollbar");
-  const spacer = target.querySelector(".table-scrollbar-spacer");
-  if (!wrap || !table || !bar || !spacer) return;
-
-  let syncing = false;
+  const track = target.querySelector(".table-scrollbar-track");
+  const thumb = target.querySelector(".table-scrollbar-thumb");
+  const buttons = target.querySelectorAll(".table-scroll-button");
+  if (!wrap || !table || !bar || !track || !thumb) return;
 
   wrap.addEventListener("scroll", () => {
-    if (syncing) return;
-    syncing = true;
-    bar.scrollLeft = wrap.scrollLeft;
-    syncing = false;
+    updateBottomScrollbar(target);
   });
 
-  bar.addEventListener("scroll", () => {
-    if (syncing) return;
-    syncing = true;
-    wrap.scrollLeft = bar.scrollLeft;
-    syncing = false;
+  buttons.forEach(button => {
+    button.addEventListener("click", () => {
+      const direction = Number(button.dataset.scrollDir || 1);
+      wrap.scrollBy({ left: direction * wrap.clientWidth * 0.85, behavior: "smooth" });
+    });
+  });
+
+  track.addEventListener("pointerdown", event => {
+    if (event.target === thumb) return;
+    const thumbBox = thumb.getBoundingClientRect();
+    const direction = event.clientX < thumbBox.left ? -1 : 1;
+    wrap.scrollBy({ left: direction * wrap.clientWidth * 0.85, behavior: "smooth" });
+  });
+
+  let dragging = false;
+  let dragStartX = 0;
+  let dragStartScroll = 0;
+  thumb.addEventListener("pointerdown", event => {
+    dragging = true;
+    dragStartX = event.clientX;
+    dragStartScroll = wrap.scrollLeft;
+    thumb.classList.add("dragging");
+    thumb.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  thumb.addEventListener("pointermove", event => {
+    if (!dragging) return;
+    const maxScroll = Math.max(1, table.scrollWidth - wrap.clientWidth);
+    const maxThumbTravel = Math.max(1, track.clientWidth - thumb.offsetWidth);
+    wrap.scrollLeft = dragStartScroll + ((event.clientX - dragStartX) / maxThumbTravel) * maxScroll;
+  });
+  ["pointerup", "pointercancel"].forEach(type => {
+    thumb.addEventListener(type, () => {
+      dragging = false;
+      thumb.classList.remove("dragging");
+    });
   });
 
   requestAnimationFrame(() => updateBottomScrollbar(target));
@@ -107,12 +140,20 @@ function updateBottomScrollbar(target) {
   const wrap = target.querySelector(".table-wrap");
   const table = target.querySelector("table");
   const bar = target.querySelector(".table-scrollbar");
-  const spacer = target.querySelector(".table-scrollbar-spacer");
-  if (!wrap || !table || !bar || !spacer) return;
+  const track = target.querySelector(".table-scrollbar-track");
+  const thumb = target.querySelector(".table-scrollbar-thumb");
+  if (!wrap || !table || !bar || !track || !thumb) return;
 
-  spacer.style.width = `${table.scrollWidth}px`;
-  bar.style.display = table.scrollWidth > wrap.clientWidth ? "block" : "none";
-  bar.scrollLeft = wrap.scrollLeft;
+  const maxScroll = table.scrollWidth - wrap.clientWidth;
+  bar.style.display = maxScroll > 0 ? "flex" : "none";
+  if (maxScroll <= 0) return;
+
+  const trackWidth = track.clientWidth;
+  const thumbWidth = Math.max(44, Math.round((wrap.clientWidth / table.scrollWidth) * trackWidth));
+  const maxThumbTravel = Math.max(1, trackWidth - thumbWidth);
+  const thumbLeft = Math.round((wrap.scrollLeft / maxScroll) * maxThumbTravel);
+  thumb.style.width = `${thumbWidth}px`;
+  thumb.style.transform = `translateX(${thumbLeft}px)`;
 }
 
 function updateAllBottomScrollbars() {
@@ -347,15 +388,29 @@ function renderBar(targetId, rows, xKey, yKey, limit = 15, color = "#1f5fbf") {
 function getListingRows() {
   const rows = [
     ...(dashboard.listing.topListings || []),
+    ...(dashboard.listing.categoryListings || []),
     ...(dashboard.listing.myShopListings || [])
   ];
-  const seen = new Set();
-  return rows.filter(row => {
+  const byKey = new Map();
+  rows.forEach(row => {
     const key = `${row.Shop || ""}|${row["Listing URL"] || row["Product Title"] || ""}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { ...row });
+      return;
+    }
+    const merged = { ...existing };
+    Object.entries(row).forEach(([column, value]) => {
+      if (value === null || value === undefined || value === "") return;
+      if (merged[column] === null || merged[column] === undefined || merged[column] === "") {
+        merged[column] = value;
+      } else if (column === "Category Aliases" && !String(merged[column]).includes(String(value))) {
+        merged[column] = `${merged[column]}; ${value}`;
+      }
+    });
+    byKey.set(key, merged);
   });
+  return Array.from(byKey.values());
 }
 
 function renderTopShops() {
@@ -431,9 +486,9 @@ function renderListings() {
     rows = rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
   }
   renderTable("top-listings", rows, [
-    "Overall Rank", "Shop", "Product Title", "Product Category", "Production Tag",
-    "Customization Tag", "Tag Confidence", "Tag Evidence", "Est. 30D Sales",
-    "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
+    "Overall Rank", "Shop", "Product Title", "Product Category", "Product Substrate Category",
+    "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
+    "Est. 30D Sales", "Est. Daily Sales", "Evidence Confidence", "Last Review ISO", "Listing URL"
   ], 80);
 }
 
