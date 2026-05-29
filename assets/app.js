@@ -1,5 +1,5 @@
 let dashboard;
-const DATA_ASSET_VERSION = "generic-source-links-20260529";
+const DATA_ASSET_VERSION = "all-source-links-20260529";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
