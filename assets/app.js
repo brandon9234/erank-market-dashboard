@@ -1,7 +1,7 @@
 let dashboard;
 let selectedCompany = "";
 let selectedCompanyProduction = "";
-const DATA_ASSET_VERSION = "review-corpus-20260529";
+const DATA_ASSET_VERSION = "review-ledger-sync-20260530";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -17,29 +17,48 @@ const numericColumns = new Set([
   "Market Daily Sales", "Market 30D Sales", "Avg Daily Sales / Listing", "Current 7D Sales",
   "Current 30D Sales", "Current Avg Daily Sales", "SQL Daily Rows", "SQL Shops", "Receipts",
   "Transactions", "Listings", "Reviews", "Launch Priority", "Tag Confidence",
-  "Price", "Views", "Favorites", "Tags Count", "Recent 180D Sales", "Recent 180D Revenue",
+  "Price", "Views", "Favorites", "Tags Count", "Recent 7D Sales", "Recent 30D Sales",
+  "Recent 90D Sales", "Recent 180D Sales", "Recent 30D Revenue", "Recent 180D Revenue",
+  "Listing Age Days", "Sales Rate Window Days",
   "MyMaravia Listings", "Current Product Categories", "Market Long Tails In Current Categories",
   "Market Long Tails", "Built Long Tails", "Needs Build", "Coverage %", "Top Open Daily Sales",
   "Recent Reviews", "Recent Avg Rating", "Tracked Listings", "Tracked Product Categories",
   "Tracked Production Methods", "Tracked Est. Daily Sales", "Tracked Est. 30D Sales",
   "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Listings",
-  "Review Corpus Avg Rating", "Review Evidence Count"
+  "Review Corpus Avg Rating", "Review Evidence Count", "Review Corpus Span Days",
+  "Review Corpus Months Covered", "Peak Review Month Count", "Seasonality Index",
+  "eRank Avg Daily Sales (30D)", "eRank Total Sales",
+  "Estimated Monthly Sales", "Estimated Sales / Active Listing", "Reviews / Active Listing",
+  "Sales Per Review Used", "Observed Days"
+  , "Draft Listings", "My Daily Sales", "Current Market Daily Sales", "Current Market Share %",
+  "Fix Conversion", "Saturated / Niche Down", "Active Listings", "My Category Daily Sales",
+  "Market Daily Sales", "My Market Share %", "Top Competitor Daily Sales", "Leader Gap Daily",
+  "View-Favorite Rate %", "Sales / 100 Views", "Market Share %", "Market Listings",
+  "Market Shops", "Leader Match %", "Priority", "Top Competitor 30D Sales",
+  "Top Competitor eRank 7D Sales", "Top Competitor eRank 30D Sales",
+  "Top Competitor Avg Daily Sales (30D)", "Top Competitor Active Listings",
+  "Top Competitor Review Corpus Count", "Top Competitor 90D Reviews",
+  "Top Competitor 365D Reviews", "Top Competitor Avg Rating"
 ]);
 
 const wrappedColumns = new Set([
-  "Product Title", "Matched Product Categories", "Source / Context", "Counts / Metrics",
+  "Product Title", "Best Guess Tags", "Matched Product Categories", "Source / Context", "Counts / Metrics",
   "Blocker / Issue", "Next Action", "Notes", "Source Note", "Top Substrates", "Listing URL",
   "Product Bet", "Buyer Intent", "Why It Matters", "Launch Brief", "Suggested Listings",
   "Primary Product Family", "Strategic Read", "Evidence Note", "Source", "Refresh Step",
   "Product Substrate Category", "Original Broad Category", "Category Aliases", "Production Tag",
   "Customization Tag", "Tag Evidence", "Blank / Generic Sources", "Top Open Long Tail",
   "Existing MyMaravia Long Tails", "Market Long Tail", "Matching MyMaravia Listing",
-  "Build Recommendation", "Match Tokens", "Market Listing URL"
+  "Build Recommendation", "Match Tokens", "Market Listing URL", "Top Competitor",
+  "Top Competitor Shop", "Recommended Move", "CTR Data Status", "Market State",
+  "Conquest Status", "Trend Source", "Trend Confidence", "Top Competitor Tags",
+  "Top Competitor Listing URL", "Top Competitor Production Tag", "Top Competitor Trend"
 ]);
 
-const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail", "Market Thumbnail"]);
+const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail", "Market Thumbnail", "Top Competitor Thumbnail"]);
 const sourceLinkColumns = new Set(["Blank / Generic Sources"]);
 const companyColumns = new Set(["Shop", "Market Shop", "Top Shop"]);
+const badgeColumns = new Set(["Conquest Status", "Market State"]);
 
 const plotConfig = { responsive: true, displayModeBar: false };
 
@@ -73,8 +92,20 @@ function linkCell(value) {
 function thumbnailCell(row, column) {
   const src = String(row[column] ?? "");
   if (!/^https?:\/\//i.test(src)) return "";
-  const href = String(row["Listing URL"] || src);
-  const title = String(row["Product Title"] || "Listing thumbnail");
+  const href = String(
+    column === "Top Competitor Thumbnail"
+      ? row["Top Competitor Listing URL"] || row["Market Listing URL"] || row["Listing URL"] || src
+      : column === "Market Thumbnail"
+        ? row["Market Listing URL"] || row["Listing URL"] || src
+        : row["Listing URL"] || src
+  );
+  const title = String(
+    column === "Top Competitor Thumbnail"
+      ? row["Top Competitor"] || "Top competitor thumbnail"
+      : column === "Market Thumbnail"
+        ? row["Market Long Tail"] || "Market listing thumbnail"
+        : row["Product Title"] || "Listing thumbnail"
+  );
   return `<a class="listing-thumb-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer"><img class="listing-thumb" src="${escapeHtml(src)}" alt="${escapeHtml(title)}" loading="lazy"></a>`;
 }
 
@@ -142,6 +173,8 @@ function renderTable(targetId, rows, columns = null, limit = null) {
           ? productionLinkCell(row[col])
         : companyColumns.has(col)
           ? companyLinkCell(row[col])
+        : badgeColumns.has(col)
+          ? diagnosticBadge(row[col])
         : col.toLowerCase().includes("url")
           ? linkCell(row[col])
           : escapeHtml(fmt(row[col], col));
@@ -245,6 +278,16 @@ function statusBadge(value) {
     ? "bad"
     : /^ok$|success|manual update|seeded|complete/i.test(text)
       ? "good"
+      : "flat";
+  return `<span class="badge ${cls}">${escapeHtml(text)}</span>`;
+}
+
+function diagnosticBadge(value) {
+  const text = String(value ?? "Unknown");
+  const cls = /leader chase|active foothold|open attack/i.test(text)
+    ? "good"
+    : /fix|gap|saturat|draft|inactive|traffic/i.test(text)
+      ? "warn"
       : "flat";
   return `<span class="badge ${cls}">${escapeHtml(text)}</span>`;
 }
@@ -726,21 +769,31 @@ function companyStats() {
 
 function companyOptions(filter = "") {
   const query = filter.trim().toLowerCase();
-  const options = [...companyStats().values()]
+  return [...companyStats().values()]
     .filter(stat => !query || stat.name.toLowerCase().includes(query))
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
-  if (selectedCompany && !options.some(option => option.name === selectedCompany)) {
-    const selected = companyStats().get(selectedCompany);
-    if (selected) options.unshift(selected);
-  }
-  return options;
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
+function companySearchSuggestions(query, limit = 5) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return [];
+  return companyOptions(normalized)
+    .sort((a, b) => {
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+      const aStarts = aName.startsWith(normalized) ? 0 : 1;
+      const bStarts = bName.startsWith(normalized) ? 0 : 1;
+      return aStarts - bStarts ||
+        aName.indexOf(normalized) - bName.indexOf(normalized) ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    })
+    .slice(0, limit);
 }
 
 function renderCompanyOptions() {
   const select = document.getElementById("company-select");
   if (!select) return;
-  const filter = document.getElementById("company-search")?.value || "";
-  const options = companyOptions(filter);
+  const options = companyOptions();
   select.innerHTML = "";
   options.forEach(stat => {
     const option = document.createElement("option");
@@ -754,6 +807,56 @@ function renderCompanyOptions() {
   } else if (select.options.length) {
     selectedCompany = select.value;
   }
+}
+
+function hideCompanySuggestions() {
+  const list = document.getElementById("company-suggestions");
+  if (!list) return;
+  list.hidden = true;
+  list.classList.remove("active");
+}
+
+function renderCompanySuggestions() {
+  const search = document.getElementById("company-search");
+  const list = document.getElementById("company-suggestions");
+  if (!search || !list) return;
+
+  const suggestions = companySearchSuggestions(search.value);
+  list.innerHTML = "";
+  if (!search.value.trim() || suggestions.length === 0) {
+    hideCompanySuggestions();
+    return;
+  }
+
+  suggestions.forEach((stat, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "company-suggestion";
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", index === 0 ? "true" : "false");
+    const suffix = stat.listings ? `${fmt(stat.listings, "Listing Count")} listings` : `${fmt(stat.eRank30, "30D Sales")} eRank 30D`;
+    button.textContent = `${stat.name} (${suffix})`;
+    button.addEventListener("mousedown", event => event.preventDefault());
+    button.addEventListener("click", () => selectCompanyProfile(stat.name, { searchValue: stat.name }));
+    list.appendChild(button);
+  });
+
+  list.hidden = false;
+  list.classList.add("active");
+}
+
+function selectCompanyProfile(company, options = {}) {
+  const name = companyName(company);
+  if (!name) return;
+  selectedCompany = name;
+  selectedCompanyProduction = "";
+  const search = document.getElementById("company-search");
+  if (search && Object.prototype.hasOwnProperty.call(options, "searchValue")) {
+    search.value = options.searchValue;
+  }
+  renderCompanyOptions();
+  hideCompanySuggestions();
+  renderCompanyProfile();
 }
 
 function companyRows(company) {
@@ -854,13 +957,15 @@ function renderCompanyProfile() {
   const categories = new Set(listings.map(row => comparisonCategory(row)).filter(Boolean));
 
   document.getElementById("company-summary").textContent =
-    `${company} profile from listings, product categories, production tags, eRank shop metrics, coverage queue, and trend snapshots.`;
+    `${company} profile from listings, product categories, production tags, eRank shop metrics, review corpus, and review-derived sales trend estimates.`;
   document.getElementById("company-metrics").innerHTML = [
     ["Tracked listings", fmt(listings.length, "Tracked Listings")],
     ["Tracked 30D sales", fmt(trackedThirty, "Tracked Est. 30D Sales")],
     ["Tracked daily sales", fmt(trackedDaily, "Tracked Est. Daily Sales")],
     ["Product categories", fmt(categories.size, "Tracked Product Categories")],
-    ["Corpus reviews", fmt(corpusShop["Review Corpus Count"], "Review Corpus Count") || "0"]
+    ["Corpus reviews", fmt(corpusShop["Review Corpus Count"], "Review Corpus Count") || "0"],
+    ["Review months", fmt(corpusShop["Review Corpus Months Covered"], "Review Corpus Months Covered") || "0"],
+    ["Full-year history", corpusShop["Full Year Review Coverage"] || "No"]
   ].map(([label, value]) => metric(label, value)).join("");
 
   const eRank30 = numericCell(coverage, "eRank 30D Sales") || numericCell(topShop, "30D Sales");
@@ -874,6 +979,14 @@ function renderCompanyProfile() {
     calloutBits.push(
       `${fmt(corpusShop["Review Corpus Count"], "Review Corpus Count")} full-corpus reviews, ${fmt(corpusShop["Review Corpus 90D"], "Review Corpus 90D")} in the latest 90 days`
     );
+  }
+  if (corpusShop["Full Year Review Coverage"] === "Yes") {
+    calloutBits.push(
+      `full-year review coverage from ${corpusShop["Review Corpus Earliest ISO"] || "unknown"} to ${corpusShop["Review Corpus Latest ISO"] || "unknown"}`
+    );
+  }
+  if (trend["Trend Source"]) {
+    calloutBits.push(`${trend["Trend Confidence"] || "Estimated"} sales trend from ${trend["Trend Source"]}`);
   }
   if (views || favorites || recentReviews) {
     calloutBits.push(`${fmt(views, "Views")} views, ${fmt(favorites, "Favorites")} favorites, ${fmt(recentReviews, "Recent Reviews")} recent reviews in visible listing data`);
@@ -897,7 +1010,14 @@ function renderCompanyProfile() {
     "Review Corpus 365D": corpusShop["Review Corpus 365D"] ?? "",
     "Review Corpus Listings": corpusShop["Review Corpus Listings"] ?? "",
     "Review Corpus Avg Rating": corpusShop["Review Corpus Avg Rating"] ?? "",
+    "Review Corpus Earliest ISO": corpusShop["Review Corpus Earliest ISO"] ?? "",
     "Review Corpus Latest ISO": corpusShop["Review Corpus Latest ISO"] ?? "",
+    "Review Corpus Span Days": corpusShop["Review Corpus Span Days"] ?? "",
+    "Review Corpus Months Covered": corpusShop["Review Corpus Months Covered"] ?? "",
+    "Full Year Review Coverage": corpusShop["Full Year Review Coverage"] ?? "",
+    "Peak Review Month": corpusShop["Peak Review Month"] ?? "",
+    "Peak Review Month Count": corpusShop["Peak Review Month Count"] ?? "",
+    "Seasonality Index": corpusShop["Seasonality Index"] ?? "",
     "Trend": trend.Trend || "",
     "Recent Avg Daily Sales": trend["Recent Avg Daily Sales"] ?? "",
     "Prior Avg Daily Sales": trend["Prior Avg Daily Sales"] ?? "",
@@ -906,6 +1026,9 @@ function renderCompanyProfile() {
     "Latest Complete Date": trend["Latest Complete Date"] ?? "",
     "Latest Complete Daily Sales": trend["Latest Complete Daily Sales"] ?? "",
     "Total Daily Sales In Range": trend["Total Daily Sales In Range"] ?? "",
+    "Sales Per Review Used": trend["Sales Per Review Used"] ?? "",
+    "Trend Source": trend["Trend Source"] ?? "",
+    "Trend Confidence": trend["Trend Confidence"] ?? "",
     "Has Tab": coverage["Has Tab"] ?? "",
     "Tab Status": coverage["Tab Status"] ?? "",
     "Review Ledger Rows": coverage["Review Ledger Rows"] ?? "",
@@ -920,17 +1043,40 @@ function renderCompanyProfile() {
       mode: "lines+markers",
       x: chartRows.map(row => row.Date),
       y: chartRows.map(row => row["Daily Sales"]),
+      customdata: chartRows.map(row => [row["Review Count"], row["Estimated Monthly Sales"], row["Trend Source"]]),
       line: { color: "#1f5fbf", width: 3 },
       marker: { size: 7 },
-      hovertemplate: "%{x}<br>Daily sales: %{y:,.0f}<extra></extra>"
+      hovertemplate: "%{x}<br>Estimated avg daily sales: %{y:,.1f}<br>Reviews: %{customdata[0]:,.0f}<br>Est. monthly sales: %{customdata[1]:,.0f}<extra></extra>"
     }], {
       margin: { l: 48, r: 16, t: 8, b: 44 },
-      yaxis: { title: "Daily sales" },
+      yaxis: { title: "Estimated daily sales" },
       paper_bgcolor: "white",
       plot_bgcolor: "white"
     }, plotConfig);
   } else {
-    document.getElementById("company-sales-chart").innerHTML = `<div class="empty">No daily trend chart rows are available for this company in the public snapshot.</div>`;
+    document.getElementById("company-sales-chart").innerHTML = `<div class="empty">No review-derived sales trend rows are available for this company in the public snapshot.</div>`;
+  }
+
+  const monthlyRows = (dashboard.reviewCorpus?.shopMonthly || [])
+    .filter(row => companyName(row.Shop) === company)
+    .sort((a, b) => String(a.Month || "").localeCompare(String(b.Month || "")));
+  if (monthlyRows.length) {
+    Plotly.newPlot("company-review-cycle-chart", [{
+      type: "bar",
+      x: monthlyRows.map(row => row.Month),
+      y: monthlyRows.map(row => row["Review Count"]),
+      marker: { color: "#0f766e" },
+      hovertemplate: "%{x}<br>Reviews: %{y:,.0f}<extra></extra>"
+    }], {
+      margin: { l: 48, r: 16, t: 8, b: 44 },
+      yaxis: { title: "Review count" },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white"
+    }, plotConfig);
+    renderTable("company-review-cycle", monthlyRows, ["Month", "Review Count"], 36);
+  } else {
+    document.getElementById("company-review-cycle-chart").innerHTML = `<div class="empty">No monthly review corpus rows are available for this company.</div>`;
+    document.getElementById("company-review-cycle").innerHTML = "";
   }
 
   if (productRows.length) {
@@ -959,10 +1105,11 @@ function renderCompanyProfile() {
   if (clearProduction) clearProduction.hidden = !selectedCompanyProduction;
 
   renderTable("company-listings", visibleListings, [
-    "Overall Rank", "Thumbnail", "Est. Daily Sales", "Est. 30D Sales", "Product Title",
+    "Overall Rank", "Thumbnail", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Best Guess Tags",
     "Product Category", "Product Substrate Category", "Original Broad Category", "Production Tag",
     "Customization Tag", "Tag Confidence", "Tag Evidence", "Evidence Confidence", "Last Review ISO",
-    "Price", "Views", "Favorites", "Recent 180D Sales", "Recent 180D Revenue", "Recent Reviews",
+    "Price", "Views", "Favorites", "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales",
+    "Recent 180D Sales", "Recent 30D Revenue", "Recent 180D Revenue", "Sales Rate Window Days", "Recent Reviews",
     "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
     "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Blank / Generic Sources", "Listing URL"
   ], 300);
@@ -971,12 +1118,10 @@ function renderCompanyProfile() {
 }
 
 function openCompanyProfile(company) {
-  selectedCompany = companyName(company);
-  if (!selectedCompany) return;
-  selectedCompanyProduction = "";
-  renderCompanyOptions();
+  const name = companyName(company);
+  if (!name) return;
+  selectCompanyProfile(name, { searchValue: "" });
   activateView("company");
-  renderCompanyProfile();
 }
 
 function renderOpportunity() {
@@ -1040,22 +1185,89 @@ function renderMyMaravia() {
   const my = dashboard.myMaravia || {};
   const metrics = my.metrics || {};
   const metricRows = [
-    ["MyMaravia listings", fmt(metrics["MyMaravia Listings"], "MyMaravia Listings") || "0"],
-    ["Current categories", fmt(metrics["Current Product Categories"], "Current Product Categories") || "0"],
-    ["Market long tails", fmt(metrics["Market Long Tails In Current Categories"], "Market Long Tails In Current Categories") || "0"],
-    ["Built long tails", fmt(metrics["Built Long Tails"], "Built Long Tails") || "0"],
-    ["Needs build", fmt(metrics["Needs Build"], "Needs Build") || "0"],
+    ["All listings", fmt(metrics["MyMaravia Listings"], "MyMaravia Listings") || "0"],
+    ["Active listings", fmt(metrics["Active Listings"], "Active Listings") || "0"],
+    ["Market share", metrics["Current Market Share %"] == null ? "Unavailable" : fmt(metrics["Current Market Share %"], "Current Market Share %")],
+    ["Fix conversion", fmt(metrics["Fix Conversion"], "Fix Conversion") || "0"],
+    ["Saturated", fmt(metrics["Saturated / Niche Down"], "Saturated / Niche Down") || "0"],
     ["Coverage", metrics["Coverage %"] == null ? "Unavailable" : fmt(metrics["Coverage %"], "Coverage %")]
   ];
 
   document.getElementById("mymaravia-metrics").innerHTML = metricRows.map(([label, value]) => metric(label, value)).join("");
   document.getElementById("mymaravia-method").textContent = my.method || "";
+  document.getElementById("mymaravia-summary").innerHTML =
+    `<strong>${fmt(metrics["Active Listings"], "Active Listings") || 0} active listings</strong> are competing against ${fmt(metrics["Current Market Daily Sales"], "Current Market Daily Sales") || 0} estimated daily market sales across current categories. The priority queue below is sorted toward conversion problems, leader gaps, and crowded markets first.`;
+
+  const categoryRows = my.categories || [];
+  if (categoryRows.length) {
+    const chartRows = categoryRows.slice().sort((a, b) => Number(b["Market Daily Sales"] || 0) - Number(a["Market Daily Sales"] || 0)).slice(0, 12).reverse();
+    Plotly.newPlot("mymaravia-category-chart", [
+      {
+        type: "bar",
+        orientation: "h",
+        name: "Market daily sales",
+        x: chartRows.map(row => row["Market Daily Sales"]),
+        y: chartRows.map(row => row["Product Category"]),
+        marker: { color: "#244c66" },
+        hovertemplate: "%{y}<br>Market daily sales: %{x:,.1f}<extra></extra>"
+      },
+      {
+        type: "bar",
+        orientation: "h",
+        name: "MyMaravia daily sales",
+        x: chartRows.map(row => row["My Category Daily Sales"]),
+        y: chartRows.map(row => row["Product Category"]),
+        marker: { color: "#0b7a63" },
+        hovertemplate: "%{y}<br>MyMaravia daily sales: %{x:,.1f}<extra></extra>"
+      }
+    ], {
+      barmode: "group",
+      margin: { l: 170, r: 18, t: 8, b: 46 },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white",
+      xaxis: { automargin: true },
+      yaxis: { automargin: true },
+      legend: { orientation: "h", y: -0.18 }
+    }, plotConfig);
+  } else {
+    document.getElementById("mymaravia-category-chart").innerHTML = `<div class="empty">No MyMaravia category rows are available.</div>`;
+  }
 
   renderTable("mymaravia-categories", my.categories || [], [
-    "Product Category", "MyMaravia Listings", "Market Long Tails", "Built Long Tails",
-    "Needs Build", "Coverage %", "Top Open Daily Sales", "Top Open Long Tail",
+    "Product Category", "MyMaravia Listings", "Active Listings", "Market Long Tails", "Market Shops",
+    "My Category Daily Sales", "Market Daily Sales", "My Market Share %", "Top Competitor Thumbnail",
+    "Top Competitor", "Top Competitor Shop", "Top Competitor Daily Sales", "Top Competitor 30D Sales",
+    "Top Competitor eRank 30D Sales", "Top Competitor Active Listings", "Top Competitor Listing URL",
+    "Leader Gap Daily", "Market State",
+    "Built Long Tails", "Needs Build", "Coverage %", "Top Open Daily Sales", "Top Open Long Tail",
     "Existing MyMaravia Long Tails"
   ]);
+
+  const diagnosticStatus = document.getElementById("my-listing-status-filter")?.value || "";
+  const listingState = document.getElementById("my-listing-state-filter")?.value || "";
+  const listingQuery = (document.getElementById("my-listing-search")?.value || "").trim().toLowerCase();
+  const allDiagnostics = my.listingDiagnostics || [];
+  let diagnosticRows = allDiagnostics;
+  if (diagnosticStatus) diagnosticRows = diagnosticRows.filter(row => row["Conquest Status"] === diagnosticStatus);
+  if (listingState) diagnosticRows = diagnosticRows.filter(row => String(row.State || "").toLowerCase() === listingState);
+  if (listingQuery) diagnosticRows = diagnosticRows.filter(row => Object.values(row).join(" ").toLowerCase().includes(listingQuery));
+  document.getElementById("mymaravia-listing-count").textContent =
+    diagnosticRows.length === allDiagnostics.length
+      ? `Showing all ${fmt(allDiagnostics.length, "Listing Count")} listing diagnostics`
+      : `Showing ${fmt(diagnosticRows.length, "Listing Count")} of ${fmt(allDiagnostics.length, "Listing Count")} listing diagnostics`;
+  renderTable("mymaravia-listing-diagnostics", diagnosticRows, [
+    "Priority", "Conquest Status", "Thumbnail", "State", "Product Category", "Product Title",
+    "Best Guess Tags", "Views", "Favorites", "View-Favorite Rate %", "Recent 7D Sales",
+    "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales", "Sales / 100 Views",
+    "Recent 30D Revenue", "Recent 180D Revenue", "Sales Rate Window Days", "Market Share %", "Market State",
+    "Top Competitor Thumbnail", "Top Competitor", "Top Competitor Shop", "Top Competitor Daily Sales",
+    "Top Competitor 30D Sales", "Top Competitor eRank 7D Sales", "Top Competitor eRank 30D Sales",
+    "Top Competitor Avg Daily Sales (30D)", "Top Competitor Active Listings",
+    "Top Competitor Review Corpus Count", "Top Competitor 90D Reviews", "Top Competitor 365D Reviews",
+    "Top Competitor Avg Rating", "Top Competitor Production Tag", "Top Competitor Trend",
+    "Top Competitor Listing URL", "Leader Gap Daily",
+    "Leader Match %", "Recommended Move", "CTR Data Status", "Listing URL"
+  ], 300);
 
   const category = document.getElementById("my-category-filter")?.value || "";
   const status = document.getElementById("my-status-filter")?.value || "";
@@ -1079,10 +1291,11 @@ function renderMyMaravia() {
   ], 250);
 
   renderTable("mymaravia-listings", my.myListings || [], [
-    "Thumbnail", "Product Category", "Est. Daily Sales", "Product Title", "Recent 180D Sales",
-    "Recent Reviews", "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D",
-    "Views", "Favorites", "Tags Count", "State", "Listing URL"
-  ], 200);
+    "Thumbnail", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Best Guess Tags",
+    "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales",
+    "Recent Reviews", "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D", "Sales Rate Window Days",
+    "Views", "Favorites", "Tags Count", "Listing URL"
+  ], 500);
 }
 
 function renderListings() {
@@ -1102,7 +1315,7 @@ function renderListings() {
   document.getElementById("listing-count").textContent =
     rows.length === allRows.length ? `Showing all ${total} listings` : `Showing ${count} of ${total} listings`;
   renderTable("top-listings", rows, [
-    "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Blank / Generic Sources", "Product Title", "Product Category", "Product Substrate Category",
+    "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Blank / Generic Sources", "Product Title", "Best Guess Tags", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
     "Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
     "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Evidence Confidence", "Last Review ISO", "Listing URL"
@@ -1285,7 +1498,7 @@ function answerListingQuestion(question) {
       `Use the table for the evidence trail and source links.`
     ],
     rows,
-    ["Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Product Substrate Category", "Production Tag", "Listing URL"]
+    ["Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Best Guess Tags", "Product Substrate Category", "Production Tag", "Listing URL"]
   );
 }
 
@@ -1304,7 +1517,7 @@ function answerSourceQuestion(question) {
       `Rows are sorted by ${askMetric(question)}.`
     ],
     withStatus,
-    ["Source Status", "Shop", "Est. Daily Sales", "Est. 30D Sales", "Blank / Generic Sources", "Product Title", "Product Substrate Category", "Listing URL"]
+    ["Source Status", "Shop", "Est. Daily Sales", "Est. 30D Sales", "Blank / Generic Sources", "Product Title", "Best Guess Tags", "Product Substrate Category", "Listing URL"]
   );
 }
 
@@ -1320,7 +1533,7 @@ function answerMyMaraviaQuestion(question) {
       `MyMaravia has ${fmt(metrics["MyMaravia Listings"], "MyMaravia Listings") || fmt(rows.length, "Listing Count")} current listings across ${fmt(metrics["Current Product Categories"], "Current Product Categories") || "the visible"} categories.`,
       [`Rows are sorted by estimated daily sales.`],
       rows,
-      ["Thumbnail", "Product Category", "Est. Daily Sales", "Product Title", "Recent 180D Sales", "Recent Reviews", "Recent Avg Rating", "Views", "Favorites", "Listing URL"],
+      ["Thumbnail", "Product Category", "Est. Daily Sales", "Product Title", "Best Guess Tags", "Recent 180D Sales", "Recent Reviews", "Recent Avg Rating", "Views", "Favorites", "Listing URL"],
       50
     );
   }
@@ -1448,7 +1661,47 @@ function answerReviewQuestion(question) {
       `Rows are sorted by full-corpus review count.`
     ],
     rows,
-    ["Shop", "Product Category", "Product Substrate Category", "Product Title", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Recent Reviews", "Recent Avg Rating", "Est. Daily Sales", "Listing URL"],
+    ["Shop", "Product Category", "Product Substrate Category", "Product Title", "Best Guess Tags", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Recent Reviews", "Recent Avg Rating", "Est. Daily Sales", "Listing URL"],
+    50
+  );
+}
+
+function answerSeasonalityQuestion(question) {
+  const corpus = dashboard.reviewCorpus || {};
+  const q = normalizeQuestion(question);
+  let rows = (corpus.seasonalityCandidates || []).slice();
+  const tokens = askTokens(question).filter(token => ![
+    "cycle", "cyclical", "season", "seasonal", "seasonality", "year", "full", "history", "data", "shop", "shops"
+  ].includes(token));
+  if (tokens.length) {
+    const scoped = filterRowsByTokens(rows, tokens);
+    if (scoped.length) rows = scoped;
+  }
+  rows.sort((a, b) =>
+    numericCell(b, "eRank 30D Sales") - numericCell(a, "eRank 30D Sales") ||
+    numericCell(b, "Review Corpus 365D") - numericCell(a, "Review Corpus 365D")
+  );
+  const leader = rows[0];
+  const monthlyRows = leader
+    ? (corpus.shopMonthly || []).filter(row => companyName(row.Shop) === companyName(leader.Shop))
+    : [];
+  return result(
+    "Review cycle answer",
+    leader
+      ? `${leader.Shop} is the biggest full-year cycle-check candidate in scope: ${fmt(leader["eRank 30D Sales"], "eRank 30D Sales")} current eRank 30-day sales, ${fmt(leader["Review Corpus 365D"], "Review Corpus 365D")} reviews in the latest 365 days, and ${fmt(leader["Review Corpus Months Covered"], "Review Corpus Months Covered")} months covered.`
+      : "No full-year review-cycle candidates matched that scope.",
+    [
+      `${fmt(corpus.totalReviews, "Review Corpus Count")} total SQL review records are available, from ${corpus.earliestReviewISO || "unknown"} through ${corpus.latestReviewISO || "unknown"}.`,
+      `${fmt((corpus.seasonalityCandidates || []).length, "Shop Count")} shops have full-year review coverage by the dashboard's criteria.`,
+      leader && monthlyRows.length ? `${leader.Shop} peak review month is ${leader["Peak Review Month"] || "unavailable"} with ${fmt(leader["Peak Review Month Count"], "Review Corpus Count")} reviews.` : ""
+    ],
+    rows,
+    [
+      "Shop", "eRank 30D Sales", "eRank 7D Sales", "Review Corpus 365D", "Review Corpus 90D",
+      "Review Corpus Count", "Review Corpus Earliest ISO", "Review Corpus Latest ISO",
+      "Review Corpus Months Covered", "Peak Review Month", "Peak Review Month Count", "Seasonality Index",
+      "Active Listings"
+    ],
     50
   );
 }
@@ -1462,7 +1715,7 @@ function answerVariationQuestion() {
       "Competitor public review scraping generally cannot see the buyer's ordered variation unless Etsy renders it publicly."
     ],
     dashboard.myMaravia?.myListings || [],
-    ["Thumbnail", "Product Category", "Product Title", "Est. Daily Sales", "Recent 180D Sales", "Listing URL"],
+    ["Thumbnail", "Product Category", "Product Title", "Best Guess Tags", "Est. Daily Sales", "Recent 180D Sales", "Listing URL"],
     25
   );
 }
@@ -1476,6 +1729,7 @@ function answerSheetQuestion(question) {
   if (/mymaravia|my shop|my listings|coverage|gap|missing|need.*build|build queue/.test(q)) return answerMyMaraviaQuestion(question);
   if (/opportun|launch|priority|next|should.*build|best bet/.test(q)) return answerOpportunityQuestion(question);
   if (/blank|generic|source|supplier|local stock|buy blank/.test(q)) return answerSourceQuestion(question);
+  if (/cycle|cyclical|season|seasonal|seasonality|year back|full year|annual/.test(q)) return answerSeasonalityQuestion(question);
   if (/trend|moving|movement|momentum|rising|declin|dropping|falling/.test(q)) return answerTrendQuestion(question);
   if (/review|rating|stars/.test(q)) return answerReviewQuestion(question);
   if (/shop|seller|competitor/.test(q)) return answerShopQuestion(question);
@@ -1625,7 +1879,10 @@ function initMyMaraviaFilters() {
       existingValues.add(category);
     });
 
-  ["my-category-filter", "my-status-filter", "my-long-tail-search"].forEach(id => {
+  [
+    "my-category-filter", "my-status-filter", "my-long-tail-search",
+    "my-listing-status-filter", "my-listing-state-filter", "my-listing-search"
+  ].forEach(id => {
     const element = document.getElementById(id);
     if (!element || element.dataset.bound === "true") return;
     element.addEventListener("input", renderMyMaravia);
@@ -1644,21 +1901,35 @@ function initCompanyProfile() {
   const select = document.getElementById("company-select");
   if (select.dataset.bound !== "true") {
     select.addEventListener("change", () => {
-      selectedCompany = select.value;
-      selectedCompanyProduction = "";
-      renderCompanyProfile();
+      selectCompanyProfile(select.value, { searchValue: "" });
     });
     select.dataset.bound = "true";
   }
 
   const search = document.getElementById("company-search");
   if (search && search.dataset.bound !== "true") {
-    search.addEventListener("input", renderCompanyOptions);
+    search.addEventListener("input", renderCompanySuggestions);
+    search.addEventListener("focus", renderCompanySuggestions);
+    search.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        hideCompanySuggestions();
+      }
+      if (event.key === "Enter") {
+        const firstSuggestion = companySearchSuggestions(search.value)[0];
+        if (!firstSuggestion) return;
+        event.preventDefault();
+        selectCompanyProfile(firstSuggestion.name, { searchValue: firstSuggestion.name });
+      }
+    });
     search.dataset.bound = "true";
   }
 
   if (document.body.dataset.companyLinksBound !== "true") {
     document.addEventListener("click", event => {
+      if (!event.target.closest(".company-search-wrap")) {
+        hideCompanySuggestions();
+      }
+
       const companyTarget = event.target.closest(".company-link");
       if (companyTarget) {
         openCompanyProfile(companyTarget.dataset.company || companyTarget.textContent);
@@ -1732,7 +2003,7 @@ function renderAll() {
   renderBar("demand-intent-chart", dashboard.comparison.demandIntentRollup || [], "Total Est. 30D Sales", "Demand Intent Cluster", 20, "#0f766e");
   renderTable("demand-intent-table", dashboard.comparison.demandIntentRollup, ["Demand Intent Cluster", "Total Est. 30D Sales", "Listing Count", "Shop Count", "Top Substrates"], 40);
   renderLineByGroup("shop-trend-chart", dashboard.comparison.shopTrendChart || [], "Date", "Daily Sales", "Shop");
-  renderTrendTable("shop-trends", dashboard.comparison.shopTrends, ["Shop", "Trend", "Recent Avg Daily Sales", "Prior Avg Daily Sales", "Delta", "Delta %", "Latest Complete Date", "Latest Complete Daily Sales", "Total Daily Sales In Range", "Days Used"], 70);
+  renderTrendTable("shop-trends", dashboard.comparison.shopTrends, ["Shop", "Trend", "Recent Avg Daily Sales", "Prior Avg Daily Sales", "Delta", "Delta %", "Latest Complete Date", "Latest Complete Daily Sales", "Total Daily Sales In Range", "Days Used", "Review Count", "Sales Per Review Used", "Trend Confidence", "Trend Source"], 120);
   initCompanyProfile();
   renderListings();
   renderAskScope();
