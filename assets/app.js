@@ -1,7 +1,7 @@
 let dashboard;
 let selectedCompany = "";
 let selectedCompanyProduction = "";
-const DATA_ASSET_VERSION = "listing-tags-20260530-1";
+const DATA_ASSET_VERSION = "snapshot-20260531-1";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
