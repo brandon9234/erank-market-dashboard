@@ -384,6 +384,26 @@ th.thumbnail-cell {
   color: var(--teal);
 }
 
+.cycle-link {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.cycle-link:hover,
+.cycle-link.active {
+  text-decoration: underline;
+}
+
+.cycle-link.active {
+  color: var(--teal);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

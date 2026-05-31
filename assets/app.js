@@ -1,7 +1,8 @@
 let dashboard;
 let selectedCompany = "";
 let selectedCompanyProduction = "";
-const DATA_ASSET_VERSION = "snapshot-20260531-1";
+let selectedListingCycleKey = "";
+const DATA_ASSET_VERSION = "weekly-cycles-20260531-1";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -29,7 +30,8 @@ const numericColumns = new Set([
   "Review Corpus Months Covered", "Peak Review Month Count", "Seasonality Index",
   "eRank Avg Daily Sales (30D)", "eRank Total Sales",
   "Estimated Monthly Sales", "Estimated Sales / Active Listing", "Reviews / Active Listing",
-  "Sales Per Review Used", "Observed Days"
+  "Sales Per Review Used", "Observed Days", "Estimated Weekly Sales", "Recent Weekly Sales",
+  "Prior Weekly Sales", "Peak Weekly Sales", "Cycle Weeks Covered"
   , "Draft Listings", "My Daily Sales", "Current Market Daily Sales", "Current Market Share %",
   "Fix Conversion", "Saturated / Niche Down", "Active Listings", "My Category Daily Sales",
   "Market Daily Sales", "My Market Share %", "Top Competitor Daily Sales", "Leader Gap Daily",
@@ -52,7 +54,8 @@ const wrappedColumns = new Set([
   "Build Recommendation", "Match Tokens", "Market Listing URL", "Top Competitor",
   "Top Competitor Shop", "Recommended Move", "CTR Data Status", "Market State",
   "Conquest Status", "Trend Source", "Trend Confidence", "Top Competitor Tags",
-  "Top Competitor Listing URL", "Top Competitor Production Tag", "Top Competitor Trend"
+  "Top Competitor Listing URL", "Top Competitor Production Tag", "Top Competitor Trend",
+  "Cycle Confidence", "Weekly Trend"
 ]);
 
 const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail", "Market Thumbnail", "Top Competitor Thumbnail"]);
@@ -143,6 +146,13 @@ function productionLinkCell(value) {
   return `<button class="production-link${active}" type="button" data-production="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`;
 }
 
+function listingCycleLinkCell(row) {
+  const key = String(row["Weekly Cycle Key"] || "");
+  if (!key || !row["Weekly Sales Graph"]) return "";
+  const active = key === selectedListingCycleKey ? " active" : "";
+  return `<button class="cycle-link${active}" type="button" data-cycle-key="${escapeHtml(key)}">Open graph</button>`;
+}
+
 function renderTable(targetId, rows, columns = null, limit = null) {
   const target = document.getElementById(targetId);
   if (!target) return;
@@ -171,6 +181,8 @@ function renderTable(targetId, rows, columns = null, limit = null) {
           ? sourceLinksCell(row[col])
         : targetId === "company-production" && col === "Production Tag"
           ? productionLinkCell(row[col])
+        : col === "Weekly Sales Graph"
+          ? listingCycleLinkCell(row)
         : companyColumns.has(col)
           ? companyLinkCell(row[col])
         : badgeColumns.has(col)
@@ -695,6 +707,77 @@ function getListingRows() {
   return Array.from(byKey.values());
 }
 
+function listingCycleMap() {
+  return new Map((dashboard.reviewCorpus?.listingCycles || []).map(cycle => [String(cycle.key || ""), cycle]).filter(([key]) => key));
+}
+
+function fullListingCycleRows(cycle) {
+  if (!cycle) return [];
+  const byWeek = new Map((cycle.weeks || []).map(item => [String(item[0]), item]));
+  const start = new Date(`${cycle.weekStart}T00:00:00`);
+  const end = new Date(`${cycle.weekEnd}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return [];
+  const rows = [];
+  for (let cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 7)) {
+    const week = cursor.toISOString().slice(0, 10);
+    const point = byWeek.get(week) || [week, 0, 0];
+    rows.push({
+      "Week Start": week,
+      "Review Count": Number(point[1] || 0),
+      "Estimated Weekly Sales": Number(point[2] || 0),
+      "Sales Per Review Used": cycle.salesPerReview,
+      "Trend Source": cycle.source,
+      "Trend Confidence": cycle.confidence
+    });
+  }
+  return rows;
+}
+
+function renderListingCycle(cycleKey = selectedListingCycleKey) {
+  const target = document.getElementById("listing-cycle-chart");
+  const summary = document.getElementById("listing-cycle-summary");
+  if (!target || !summary) return;
+  const cycles = dashboard.reviewCorpus?.listingCycles || [];
+  if (!cycleKey && cycles.length) cycleKey = String(cycles[0].key || "");
+  selectedListingCycleKey = cycleKey || "";
+  const cycle = listingCycleMap().get(selectedListingCycleKey);
+  if (!cycle) {
+    target.innerHTML = `<div class="empty">No listing weekly sales cycle is selected.</div>`;
+    summary.textContent = "";
+    document.getElementById("listing-cycle-table").innerHTML = "";
+    return;
+  }
+  const rows = fullListingCycleRows(cycle);
+  const title = cycle.title || "Selected listing";
+  summary.textContent = `${cycle.shop || "Unknown shop"} · ${fmt(cycle.reviewCount, "Review Corpus Count")} reviews · ${cycle.confidence || "Estimated"} · ${cycle.source || ""}`;
+  Plotly.newPlot("listing-cycle-chart", [{
+    type: "bar",
+    name: "Estimated weekly sales",
+    x: rows.map(row => row["Week Start"]),
+    y: rows.map(row => row["Estimated Weekly Sales"]),
+    customdata: rows.map(row => [row["Review Count"], row["Sales Per Review Used"], row["Trend Confidence"]]),
+    marker: { color: "#1f5fbf" },
+    hovertemplate: "%{x}<br>Estimated weekly sales: %{y:,.1f}<br>Reviews: %{customdata[0]:,.0f}<br>Sales/review: %{customdata[1]:,.2f}<br>%{customdata[2]}<extra></extra>"
+  }], {
+    title: { text: title, font: { size: 14 } },
+    margin: { l: 58, r: 18, t: 38, b: 44 },
+    yaxis: { title: "Estimated weekly sales" },
+    paper_bgcolor: "white",
+    plot_bgcolor: "white"
+  }, plotConfig);
+  renderTable("listing-cycle-table", [...rows].reverse(), ["Week Start", "Estimated Weekly Sales", "Review Count", "Sales Per Review Used", "Trend Confidence", "Trend Source"], 52);
+}
+
+function openListingCycle(cycleKey, options = {}) {
+  if (!cycleKey) return;
+  selectedListingCycleKey = String(cycleKey);
+  renderListingCycle(selectedListingCycleKey);
+  renderListings();
+  if (options.scroll !== false) {
+    document.getElementById("listing-cycle-panel")?.scrollIntoView({ block: "start" });
+  }
+}
+
 function numericCell(row, column) {
   const value = row[column];
   if (typeof value === "number") return value;
@@ -773,7 +856,11 @@ function companyOptions(filter = "") {
   const query = filter.trim().toLowerCase();
   return [...companyStats().values()]
     .filter(stat => !query || stat.name.toLowerCase().includes(query))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    .sort((a, b) => {
+      const priority = name => /^(mymaravia|cronk research)$/i.test(name) ? 0 : 1;
+      return priority(a.name) - priority(b.name) ||
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
 }
 
 function companySearchSuggestions(query, limit = 5) {
@@ -1059,25 +1146,26 @@ function renderCompanyProfile() {
     document.getElementById("company-sales-chart").innerHTML = `<div class="empty">No review-derived sales trend rows are available for this company in the public snapshot.</div>`;
   }
 
-  const monthlyRows = (dashboard.reviewCorpus?.shopMonthly || [])
+  const weeklyRows = (dashboard.reviewCorpus?.shopWeeklySales || [])
     .filter(row => companyName(row.Shop) === company)
-    .sort((a, b) => String(a.Month || "").localeCompare(String(b.Month || "")));
-  if (monthlyRows.length) {
+    .sort((a, b) => String(a["Week Start"] || "").localeCompare(String(b["Week Start"] || "")));
+  if (weeklyRows.length) {
     Plotly.newPlot("company-review-cycle-chart", [{
       type: "bar",
-      x: monthlyRows.map(row => row.Month),
-      y: monthlyRows.map(row => row["Review Count"]),
+      x: weeklyRows.map(row => row["Week Start"]),
+      y: weeklyRows.map(row => row["Estimated Weekly Sales"]),
+      customdata: weeklyRows.map(row => [row["Review Count"], row["Sales Per Review Used"], row["Trend Confidence"]]),
       marker: { color: "#0f766e" },
-      hovertemplate: "%{x}<br>Reviews: %{y:,.0f}<extra></extra>"
+      hovertemplate: "%{x}<br>Estimated weekly sales: %{y:,.1f}<br>Reviews: %{customdata[0]:,.0f}<br>Sales/review: %{customdata[1]:,.2f}<br>%{customdata[2]}<extra></extra>"
     }], {
       margin: { l: 48, r: 16, t: 8, b: 44 },
-      yaxis: { title: "Review count" },
+      yaxis: { title: "Estimated weekly sales" },
       paper_bgcolor: "white",
       plot_bgcolor: "white"
     }, plotConfig);
-    renderTable("company-review-cycle", monthlyRows, ["Month", "Review Count"], 36);
+    renderTable("company-review-cycle", [...weeklyRows].reverse(), ["Week Start", "Estimated Weekly Sales", "Review Count", "Sales Per Review Used", "Trend Confidence", "Trend Source"], 52);
   } else {
-    document.getElementById("company-review-cycle-chart").innerHTML = `<div class="empty">No monthly review corpus rows are available for this company.</div>`;
+    document.getElementById("company-review-cycle-chart").innerHTML = `<div class="empty">No weekly review-derived sales rows are available for this company.</div>`;
     document.getElementById("company-review-cycle").innerHTML = "";
   }
 
@@ -1107,7 +1195,8 @@ function renderCompanyProfile() {
   if (clearProduction) clearProduction.hidden = !selectedCompanyProduction;
 
   renderTable("company-listings", visibleListings, [
-    "Overall Rank", "Thumbnail", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
+    "Overall Rank", "Thumbnail", "Weekly Sales Graph", "Recent Weekly Sales", "Weekly Trend", "Peak Sales Week", "Peak Weekly Sales",
+    "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
     "Product Category", "Product Substrate Category", "Original Broad Category", "Production Tag",
     "Customization Tag", "Tag Confidence", "Tag Evidence", "Evidence Confidence", "Last Review ISO",
     "Price", "Views", "Favorites", "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales",
@@ -1293,7 +1382,7 @@ function renderMyMaravia() {
   ], 250);
 
   renderTable("mymaravia-listings", my.myListings || [], [
-    "Thumbnail", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
+    "Thumbnail", "Weekly Sales Graph", "Recent Weekly Sales", "Weekly Trend", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
     "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales",
     "Recent Reviews", "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D", "Sales Rate Window Days",
     "Views", "Favorites", "Tags Count", "Listing URL"
@@ -1317,11 +1406,13 @@ function renderListings() {
   document.getElementById("listing-count").textContent =
     rows.length === allRows.length ? `Showing all ${total} listings` : `Showing ${count} of ${total} listings`;
   renderTable("top-listings", rows, [
-    "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Blank / Generic Sources", "Product Title", "Tags", "Tags Source", "Best Guess Tags", "Product Category", "Product Substrate Category",
+    "Overall Rank", "Thumbnail", "Weekly Sales Graph", "Recent Weekly Sales", "Weekly Trend", "Peak Sales Week", "Peak Weekly Sales",
+    "Shop", "Est. Daily Sales", "Est. 30D Sales", "Blank / Generic Sources", "Product Title", "Tags", "Tags Source", "Best Guess Tags", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
-    "Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
+    "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
     "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Evidence Confidence", "Last Review ISO", "Listing URL"
   ]);
+  renderListingCycle(selectedListingCycleKey);
 }
 
 const askStopWords = new Set([
@@ -1943,6 +2034,12 @@ function initCompanyProfile() {
         selectedCompanyProduction = productionTarget.dataset.production || productionTarget.textContent || "";
         renderCompanyProfile();
         document.getElementById("company-listings")?.scrollIntoView({ block: "start" });
+        return;
+      }
+
+      const cycleTarget = event.target.closest(".cycle-link");
+      if (cycleTarget) {
+        openListingCycle(cycleTarget.dataset.cycleKey);
       }
     });
     document.body.dataset.companyLinksBound = "true";
