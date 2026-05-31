@@ -1,7 +1,7 @@
 let dashboard;
 let selectedCompany = "";
 let selectedCompanyProduction = "";
-const DATA_ASSET_VERSION = "mymaravia-refresh-20260530-1116";
+const DATA_ASSET_VERSION = "listing-tags-20260530-1";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -42,7 +42,7 @@ const numericColumns = new Set([
 ]);
 
 const wrappedColumns = new Set([
-  "Product Title", "Best Guess Tags", "Matched Product Categories", "Source / Context", "Counts / Metrics",
+  "Product Title", "Tags", "Actual Tags", "Best Guess Tags", "Tags Source", "Tags Captured At", "Matched Product Categories", "Source / Context", "Counts / Metrics",
   "Blocker / Issue", "Next Action", "Notes", "Source Note", "Top Substrates", "Listing URL",
   "Product Bet", "Buyer Intent", "Why It Matters", "Launch Brief", "Suggested Listings",
   "Primary Product Family", "Strategic Read", "Evidence Note", "Source", "Refresh Step",
@@ -348,10 +348,12 @@ function renderTrendTable(targetId, rows, columns, limit) {
 
 function renderMetrics() {
   const m = dashboard.metrics;
+  const tagCorpus = dashboard.listingTagCorpus || {};
   const cards = [
     ["Latest eRank sales date", m.latestDate],
     ["Positive 7D shops", fmt(m.positive7dShops)],
     ["Zero-7D excluded", fmt(m.zero7dExcluded)],
+    ["Listing tags captured", fmt(tagCorpus.matchedCurrentListingUrls || tagCorpus.taggedListings || 0, "Listing Count")],
     ["Latest source CSV", m.latestSourceCsv],
     ["Recent successful stages", fmt(m.recentSuccessfulStages)],
     ["Blocked/partial stages", fmt(m.blockedPartialStages)]
@@ -1105,7 +1107,7 @@ function renderCompanyProfile() {
   if (clearProduction) clearProduction.hidden = !selectedCompanyProduction;
 
   renderTable("company-listings", visibleListings, [
-    "Overall Rank", "Thumbnail", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Best Guess Tags",
+    "Overall Rank", "Thumbnail", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
     "Product Category", "Product Substrate Category", "Original Broad Category", "Production Tag",
     "Customization Tag", "Tag Confidence", "Tag Evidence", "Evidence Confidence", "Last Review ISO",
     "Price", "Views", "Favorites", "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales",
@@ -1257,7 +1259,7 @@ function renderMyMaravia() {
       : `Showing ${fmt(diagnosticRows.length, "Listing Count")} of ${fmt(allDiagnostics.length, "Listing Count")} listing diagnostics`;
   renderTable("mymaravia-listing-diagnostics", diagnosticRows, [
     "Priority", "Conquest Status", "Thumbnail", "State", "Product Category", "Product Title",
-    "Best Guess Tags", "Views", "Favorites", "View-Favorite Rate %", "Recent 7D Sales",
+    "Tags", "Tags Source", "Best Guess Tags", "Views", "Favorites", "View-Favorite Rate %", "Recent 7D Sales",
     "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales", "Sales / 100 Views",
     "Recent 30D Revenue", "Recent 180D Revenue", "Sales Rate Window Days", "Market Share %", "Market State",
     "Top Competitor Thumbnail", "Top Competitor", "Top Competitor Shop", "Top Competitor Daily Sales",
@@ -1291,7 +1293,7 @@ function renderMyMaravia() {
   ], 250);
 
   renderTable("mymaravia-listings", my.myListings || [], [
-    "Thumbnail", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Best Guess Tags",
+    "Thumbnail", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
     "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales",
     "Recent Reviews", "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D", "Sales Rate Window Days",
     "Views", "Favorites", "Tags Count", "Listing URL"
@@ -1315,7 +1317,7 @@ function renderListings() {
   document.getElementById("listing-count").textContent =
     rows.length === allRows.length ? `Showing all ${total} listings` : `Showing ${count} of ${total} listings`;
   renderTable("top-listings", rows, [
-    "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Blank / Generic Sources", "Product Title", "Best Guess Tags", "Product Category", "Product Substrate Category",
+    "Overall Rank", "Thumbnail", "Shop", "Est. Daily Sales", "Blank / Generic Sources", "Product Title", "Tags", "Tags Source", "Best Guess Tags", "Product Category", "Product Substrate Category",
     "Production Tag", "Customization Tag", "Tag Confidence", "Tag Evidence",
     "Est. 30D Sales", "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D",
     "Review Corpus Avg Rating", "Review Corpus Latest ISO", "Evidence Confidence", "Last Review ISO", "Listing URL"
