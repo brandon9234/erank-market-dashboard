@@ -3,11 +3,12 @@ let selectedCompany = "";
 let selectedCompanyProduction = "";
 let selectedListingCycleKey = "";
 let selectedBuyerMomentId = "";
+let selectedMarketSegment = "";
 let buyerMomentRowsCache = new Map();
 let buyerMomentSummariesCache = null;
 let customBuyerMomentRange = null;
 const CUSTOM_BUYER_MOMENT_ID = "custom-date-range";
-const DATA_ASSET_VERSION = "graph-tags-cleanup-20260601-1";
+const DATA_ASSET_VERSION = "nameplate-product-split-20260601-1";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -49,11 +50,16 @@ const numericColumns = new Set([
   "Top Competitor eRank 7D Sales", "Top Competitor eRank 30D Sales",
   "Top Competitor Avg Daily Sales (30D)", "Top Competitor Active Listings",
   "Top Competitor Review Corpus Count", "Top Competitor 90D Reviews",
-  "Top Competitor 365D Reviews", "Top Competitor Avg Rating"
+  "Top Competitor 365D Reviews", "Top Competitor Avg Rating",
+  "My Daily Sales", "My 30D Sales", "My Recent 30D Sales", "My Market Share %",
+  "Competing Daily Sales", "Competing 30D Sales", "Competitor Market Share %",
+  "Segment Daily Sales", "Segment 30D Sales", "Segment Share %",
+  "Covered Competitor Daily", "Covered 30D", "Covered Share %",
+  "Competitor Rows Covered", "Best Listing Daily"
 ]);
 
 const wrappedColumns = new Set([
-  "Product Title", "Tags", "Actual Tags", "Best Guess Tags", "Tags Source", "Tags Captured At", "Matched Product Categories", "Source / Context", "Counts / Metrics",
+  "Product Title", "Tags", "Actual Tags", "My Actual Tags", "Best Guess Tags", "Tags Source", "Tags Captured At", "Matched Product Categories", "Source / Context", "Counts / Metrics",
   "Blocker / Issue", "Next Action", "Notes", "Source Note", "Top Substrates", "Listing URL",
   "Product Bet", "Buyer Intent", "Why It Matters", "Launch Brief", "Suggested Listings",
   "Primary Product Family", "Strategic Read", "Evidence Note", "Source", "Refresh Step",
@@ -65,10 +71,13 @@ const wrappedColumns = new Set([
   "Conquest Status", "Trend Source", "Trend Confidence", "Top Competitor Tags",
   "Top Competitor Listing URL", "Top Competitor Production Tag", "Top Competitor Trend",
   "Cycle Confidence", "Weekly Trend", "Buyer Moment", "Moment Timeframe", "Moment Window", "Matched Cues",
-  "Moment Source", "Top Listing", "Top Shop"
+  "Moment Source", "Top Listing", "Top Shop", "Target Category", "My Listing",
+  "Competing Listing", "Competing Shop", "Competing Tags", "My Listing URL", "Competitor Listing URL",
+  "Best Listing", "Top Competitor Row", "Repeated Match Cues", "Cue / Action",
+  "Evidence", "Next Edit", "Market Control Read"
 ]);
 
-const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail", "Market Thumbnail", "Top Competitor Thumbnail"]);
+const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail", "Market Thumbnail", "Top Competitor Thumbnail", "My Thumbnail", "Competitor Thumbnail"]);
 const sourceLinkColumns = new Set(["Blank / Generic Sources"]);
 const companyColumns = new Set(["Shop", "Market Shop", "Top Shop"]);
 const badgeColumns = new Set(["Conquest Status", "Market State"]);
@@ -106,19 +115,21 @@ function linkCell(value) {
 function thumbnailCell(row, column) {
   const src = String(row[column] ?? "");
   if (!/^https?:\/\//i.test(src)) return "";
+  const isCompetitorThumb = column === "Top Competitor Thumbnail" || column === "Competitor Thumbnail";
+  const isMarketThumb = column === "Market Thumbnail";
   const href = String(
-    column === "Top Competitor Thumbnail"
-      ? row["Top Competitor Listing URL"] || row["Market Listing URL"] || row["Listing URL"] || src
-      : column === "Market Thumbnail"
+    isCompetitorThumb
+      ? row["Competitor Listing URL"] || row["Top Competitor Listing URL"] || row["Market Listing URL"] || row["Listing URL"] || src
+      : isMarketThumb
         ? row["Market Listing URL"] || row["Listing URL"] || src
-        : row["Listing URL"] || src
+        : row["My Listing URL"] || row["Listing URL"] || src
   );
   const title = String(
-    column === "Top Competitor Thumbnail"
-      ? row["Top Competitor"] || "Top competitor thumbnail"
-      : column === "Market Thumbnail"
+    isCompetitorThumb
+      ? row["Competing Listing"] || row["Top Competitor"] || "Top competitor thumbnail"
+      : isMarketThumb
         ? row["Market Long Tail"] || "Market listing thumbnail"
-        : row["Product Title"] || "Listing thumbnail"
+        : row["My Listing"] || row["Product Title"] || "Listing thumbnail"
   );
   return `<a class="listing-thumb-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer"><img class="listing-thumb" src="${escapeHtml(src)}" alt="${escapeHtml(title)}" loading="lazy"></a>`;
 }
@@ -1603,6 +1614,361 @@ function numericCell(row, column) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function percentShare(value, total) {
+  const numerator = Number(value || 0);
+  const denominator = Number(total || 0);
+  if (!denominator || denominator <= 0) return null;
+  return Number(((numerator / denominator) * 100).toFixed(1));
+}
+
+function lookupKey(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function listingLookupKeys(row) {
+  return [
+    row["Listing ID"],
+    row["Listing URL"],
+    row["Product Title"],
+    row["My Listing"],
+  ].map(lookupKey).filter(Boolean);
+}
+
+function buildListingLookup(rows) {
+  const lookup = new Map();
+  (rows || []).forEach(row => {
+    listingLookupKeys(row).forEach(key => {
+      if (!lookup.has(key)) lookup.set(key, row);
+    });
+  });
+  return lookup;
+}
+
+function findMatchingListing(row, lookup) {
+  return listingLookupKeys(row).map(key => lookup.get(key)).find(Boolean) || {};
+}
+
+function buildBattlePlanRows(rows, myListings) {
+  const lookup = buildListingLookup(myListings);
+  return (rows || []).map(row => {
+    const listing = findMatchingListing(row, lookup);
+    const myDaily = numericCell(row, "Est. Daily Sales");
+    const marketDaily = numericCell(row, "Market Daily Sales");
+    const competitorDaily = numericCell(row, "Top Competitor Daily Sales");
+    const totalCategoryDaily = marketDaily + myDaily;
+    const myShare = row["My Market Share %"] ?? row["Market Share %"] ?? percentShare(myDaily, totalCategoryDaily);
+    const competitorShare = row["Competitor Market Share %"] ?? row["Top Competitor Market Share %"] ?? percentShare(competitorDaily, totalCategoryDaily);
+    return {
+      ...row,
+      "Target Category": row["Product Category"] || listing["Product Category"],
+      "My Thumbnail": row["Thumbnail"] || listing["Thumbnail"],
+      "My Listing": row["Product Title"] || listing["Product Title"],
+      "My Actual Tags": row["Actual Tags"] || listing["Actual Tags"] || row["Tags"] || listing["Tags"] || row["Best Guess Tags"] || listing["Best Guess Tags"] || "",
+      "My Daily Sales": row["Est. Daily Sales"] ?? listing["Est. Daily Sales"],
+      "My 30D Sales": row["Est. 30D Sales"] ?? listing["Est. 30D Sales"],
+      "My Recent 30D Sales": row["Recent 30D Sales"] ?? listing["Recent 30D Sales"],
+      "My Market Share %": myShare,
+      "Competitor Thumbnail": row["Top Competitor Thumbnail"],
+      "Competing Listing": row["Top Competitor"],
+      "Competing Shop": row["Top Competitor Shop"],
+      "Competing Tags": row["Top Competitor Tags"],
+      "Competing Daily Sales": row["Top Competitor Daily Sales"],
+      "Competing 30D Sales": row["Top Competitor 30D Sales"],
+      "Competitor Market Share %": competitorShare,
+      "My Listing URL": row["Listing URL"] || listing["Listing URL"],
+      "Competitor Listing URL": row["Top Competitor Listing URL"],
+    };
+  });
+}
+
+function marketSegmentCategories() {
+  return (dashboard.myMaravia?.categories || [])
+    .map(row => row["Product Category"])
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a === "Wedding hangers") return -1;
+      if (b === "Wedding hangers") return 1;
+      const rowA = marketSegmentCategoryRow(a);
+      const rowB = marketSegmentCategoryRow(b);
+      return numericCell(rowB, "Market Daily Sales") - numericCell(rowA, "Market Daily Sales") ||
+        String(a).localeCompare(String(b));
+    });
+}
+
+function marketSegmentCategoryRow(segment) {
+  return (dashboard.myMaravia?.categories || []).find(row => row["Product Category"] === segment) || {};
+}
+
+function activeMarketSegment() {
+  const categories = marketSegmentCategories();
+  if (!categories.length) return "";
+  if (!selectedMarketSegment || !categories.includes(selectedMarketSegment)) {
+    selectedMarketSegment = categories.includes("Wedding hangers") ? "Wedding hangers" : categories[0];
+  }
+  return selectedMarketSegment;
+}
+
+function marketSegmentQueue(segment) {
+  return (dashboard.myMaravia?.longTailQueue || [])
+    .filter(row => row["Product Category"] === segment);
+}
+
+function marketSegmentMyListings(segment) {
+  return (dashboard.myMaravia?.myListings || [])
+    .filter(row => row["Product Category"] === segment);
+}
+
+function marketSegmentTotalDaily(queue) {
+  return queue.reduce((sum, row) => sum + numericCell(row, "Market Daily Sales"), 0);
+}
+
+function marketControlReadForListing(row) {
+  const state = String(row.State || "").toLowerCase();
+  const daily = numericCell(row, "Est. Daily Sales");
+  if (state && state !== "active") return "Draft / inactive: decide whether to activate, rewrite, or kill";
+  if (daily >= 4) return "Working: scale traffic and protect tags";
+  if (daily > 0) return "Weak active: improve title, image, or offer";
+  return "Not moving: fix positioning or pause";
+}
+
+function marketControlReadForCompetitor(row, rank) {
+  const daily = numericCell(row, "Market Daily Sales");
+  if (rank === 1) return "Leader: teardown image, title, tags, and personalization promise";
+  if (daily >= 5) return "Strong: copy the useful buyer-language pattern";
+  if (daily >= 1) return "Small but relevant: keep as long-tail proof";
+  return "Tiny signal: watch only";
+}
+
+function marketSegmentCompetitorRows(queue, totalDaily) {
+  const sort = document.getElementById("market-segment-sort")?.value || "daily-desc";
+  const rows = queue.map(row => ({ ...row }));
+  rows.sort((a, b) => {
+    if (sort === "shop-asc") {
+      return String(a["Market Shop"] || "").localeCompare(String(b["Market Shop"] || "")) ||
+        numericCell(b, "Market Daily Sales") - numericCell(a, "Market Daily Sales");
+    }
+    return numericCell(b, "Market Daily Sales") - numericCell(a, "Market Daily Sales");
+  });
+  return rows.map((row, index) => ({
+    ...row,
+    "Rank": index + 1,
+    "Segment Share %": percentShare(row["Market Daily Sales"], totalDaily),
+    "Market Control Read": marketControlReadForCompetitor(row, index + 1)
+  }));
+}
+
+function marketSegmentShopShareRows(queue, totalDaily) {
+  const groups = new Map();
+  queue.forEach(row => {
+    const shop = row["Market Shop"] || "Unknown";
+    if (!groups.has(shop)) {
+      groups.set(shop, {
+        "Shop": shop,
+        "Segment Daily Sales": 0,
+        "Segment 30D Sales": 0,
+        "Market Listings": 0,
+        best: null
+      });
+    }
+    const group = groups.get(shop);
+    group["Segment Daily Sales"] += numericCell(row, "Market Daily Sales");
+    group["Segment 30D Sales"] += numericCell(row, "Market 30D Sales");
+    group["Market Listings"] += 1;
+    if (!group.best || numericCell(row, "Market Daily Sales") > numericCell(group.best, "Market Daily Sales")) {
+      group.best = row;
+    }
+  });
+  return [...groups.values()]
+    .map(group => ({
+      "Shop": group.Shop,
+      "Segment Daily Sales": Number(group["Segment Daily Sales"].toFixed(2)),
+      "Segment 30D Sales": Math.round(group["Segment 30D Sales"]),
+      "Segment Share %": percentShare(group["Segment Daily Sales"], totalDaily),
+      "Market Listings": group["Market Listings"],
+      "Best Listing Daily": Number(numericCell(group.best, "Market Daily Sales").toFixed(2)),
+      "Best Listing": group.best?.["Market Long Tail"] || "",
+      "Market Listing URL": group.best?.["Market Listing URL"] || "",
+      "Market Control Read": group["Segment Daily Sales"] >= 5 ? "Direct competitor" : "Long-tail / niche signal"
+    }))
+    .sort((a, b) => numericCell(b, "Segment Daily Sales") - numericCell(a, "Segment Daily Sales"));
+}
+
+function marketSegmentMyListingRows(segment) {
+  return marketSegmentMyListings(segment)
+    .map(row => ({ ...row, "Market Control Read": marketControlReadForListing(row) }))
+    .sort((a, b) =>
+      String(a.State || "").localeCompare(String(b.State || "")) ||
+      numericCell(b, "Est. Daily Sales") - numericCell(a, "Est. Daily Sales")
+    );
+}
+
+function marketSegmentCoverageRows(queue, totalDaily) {
+  const groups = new Map();
+  queue.forEach(row => {
+    const listing = row["Matching MyMaravia Listing"] || "Unmatched market row";
+    if (!groups.has(listing)) {
+      groups.set(listing, {
+        "Matching MyMaravia Listing": listing,
+        "Covered Competitor Daily": 0,
+        "Covered 30D": 0,
+        "Competitor Rows Covered": 0,
+        top: null,
+        tokens: new Set()
+      });
+    }
+    const group = groups.get(listing);
+    group["Covered Competitor Daily"] += numericCell(row, "Market Daily Sales");
+    group["Covered 30D"] += numericCell(row, "Market 30D Sales");
+    group["Competitor Rows Covered"] += 1;
+    if (!group.top || numericCell(row, "Market Daily Sales") > numericCell(group.top, "Market Daily Sales")) {
+      group.top = row;
+    }
+    String(row["Match Tokens"] || "").split(",").map(token => token.trim()).filter(Boolean).forEach(token => group.tokens.add(token));
+  });
+  return [...groups.values()]
+    .map(group => ({
+      "Matching MyMaravia Listing": group["Matching MyMaravia Listing"],
+      "Covered Competitor Daily": Number(group["Covered Competitor Daily"].toFixed(2)),
+      "Covered 30D": Math.round(group["Covered 30D"]),
+      "Covered Share %": percentShare(group["Covered Competitor Daily"], totalDaily),
+      "Competitor Rows Covered": group["Competitor Rows Covered"],
+      "Top Competitor Row": group.top?.["Market Long Tail"] || "",
+      "Repeated Match Cues": [...group.tokens].sort().join(", "),
+      "Market Control Read": group["Covered Competitor Daily"] >= 20 ? "Protect and scale" : group["Covered Competitor Daily"] >= 5 ? "Fix / improve" : "Small coverage lane"
+    }))
+    .sort((a, b) => numericCell(b, "Covered Competitor Daily") - numericCell(a, "Covered Competitor Daily"));
+}
+
+function marketSegmentCueRows(segment, categoryRow, myListingRows, queue, coverageRows) {
+  const tokenCounts = new Map();
+  queue.forEach(row => {
+    String(row["Match Tokens"] || "").split(",").map(token => token.trim()).filter(Boolean).forEach(token => {
+      tokenCounts.set(token, (tokenCounts.get(token) || 0) + 1);
+    });
+  });
+  const cues = [...tokenCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([token]) => token)
+    .join(", ");
+  const topQueue = queue.slice().sort((a, b) => numericCell(b, "Market Daily Sales") - numericCell(a, "Market Daily Sales"))[0] || {};
+  const working = myListingRows.filter(row => numericCell(row, "Est. Daily Sales") >= 4);
+  const weak = myListingRows.filter(row => String(row.State || "").toLowerCase() === "active" && numericCell(row, "Est. Daily Sales") < 1);
+  const drafts = myListingRows.filter(row => String(row.State || "").toLowerCase() !== "active");
+  const needsBuild = queue.filter(row => row.Status === "Needs build");
+  return [
+    {
+      "Cue / Action": "Segment verdict",
+      "Evidence": `${segment}: ${fmt(categoryRow["My Market Share %"], "My Market Share %")} share, ${fmt(categoryRow["Coverage %"], "Coverage %")} coverage, ${fmt(categoryRow["Leader Gap Daily"], "Leader Gap Daily")} leader gap.`,
+      "Next Edit": needsBuild.length ? "Build the highest-sales uncovered market rows first." : "Treat this as an optimization lane: improve weak listings before adding more.",
+      "Market Control Read": categoryRow["Market State"] || ""
+    },
+    {
+      "Cue / Action": "Top competitor teardown",
+      "Evidence": topQueue["Market Long Tail"] ? `${topQueue["Market Shop"]}: ${topQueue["Market Long Tail"]}` : "No competitor rows in this segment.",
+      "Next Edit": "Compare first image, title promise, personalization fields, tags, pricing, and delivery promise.",
+      "Market Control Read": "Leader"
+    },
+    {
+      "Cue / Action": "Winner language",
+      "Evidence": cues || "No repeated match cues found.",
+      "Next Edit": "Use the repeated buyer-language cues in title, tags, and first image text when they fit the product.",
+      "Market Control Read": "Copy cues"
+    },
+    {
+      "Cue / Action": "Scale now",
+      "Evidence": working[0]?.["Product Title"] || "No strong active MyMaravia listing detected.",
+      "Next Edit": working.length ? "Protect the working title/tag cluster and test traffic or image improvements carefully." : "Find or create a listing that can own the strongest competitor cue.",
+      "Market Control Read": working.length ? "Working" : "No winner yet"
+    },
+    {
+      "Cue / Action": "Fix now",
+      "Evidence": weak[0]?.["Product Title"] || coverageRows.find(row => /fix/i.test(row["Market Control Read"]))?.["Matching MyMaravia Listing"] || "No obvious weak active listing detected.",
+      "Next Edit": "Rewrite around the strongest matching competitor promise, then watch views, favorites, and 7-day sales.",
+      "Market Control Read": weak.length ? "Fix" : "Watch"
+    },
+    {
+      "Cue / Action": "Draft decision",
+      "Evidence": drafts.length ? `${fmt(drafts.length, "Listing Count")} draft/inactive listings in this segment.` : "No drafts in this segment.",
+      "Next Edit": drafts.length ? "Activate only drafts that expose a new buyer/recipient/material angle." : "No draft cleanup needed.",
+      "Market Control Read": drafts.length ? "Decide" : "Clean"
+    }
+  ];
+}
+
+function renderMarketControl() {
+  const metricTarget = document.getElementById("market-control-metrics");
+  if (!metricTarget) return;
+  const segment = activeMarketSegment();
+  const categoryRow = marketSegmentCategoryRow(segment);
+  const queue = marketSegmentQueue(segment);
+  const totalDaily = marketSegmentTotalDaily(queue);
+  const query = (document.getElementById("market-segment-search")?.value || "").trim().toLowerCase();
+  let competitorRows = marketSegmentCompetitorRows(queue, totalDaily);
+  if (query) competitorRows = competitorRows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
+  const shopRows = marketSegmentShopShareRows(queue, totalDaily);
+  const myListingRows = marketSegmentMyListingRows(segment);
+  const coverageRows = marketSegmentCoverageRows(queue, totalDaily);
+  const actionRows = marketSegmentCueRows(segment, categoryRow, myListingRows, queue, coverageRows);
+
+  metricTarget.innerHTML = [
+    ["Segment", segment || "Unavailable"],
+    ["Market daily sales", fmt(categoryRow["Market Daily Sales"], "Market Daily Sales") || fmt(totalDaily, "Market Daily Sales") || "0"],
+    ["My daily sales", fmt(categoryRow["My Category Daily Sales"], "My Category Daily Sales") || "0"],
+    ["My market share", fmt(categoryRow["My Market Share %"], "My Market Share %") || "0%"],
+    ["Leader gap", fmt(categoryRow["Leader Gap Daily"], "Leader Gap Daily") || "0"],
+    ["Coverage", fmt(categoryRow["Coverage %"], "Coverage %") || "0%"]
+  ].map(([label, value]) => metric(label, value)).join("");
+
+  const count = document.getElementById("market-control-count");
+  if (count) {
+    count.textContent = `Showing ${fmt(competitorRows.length, "Listing Count")} of ${fmt(queue.length, "Listing Count")} competitor rows for ${segment}.`;
+  }
+  document.getElementById("market-control-summary").innerHTML =
+    `<strong>${escapeHtml(segment || "Selected segment")}</strong> has ${fmt(categoryRow["Market Daily Sales"] ?? totalDaily, "Market Daily Sales")} estimated market daily sales, ${fmt(categoryRow["My Category Daily Sales"], "My Category Daily Sales") || "0"} MyMaravia daily sales, and ${fmt(categoryRow["Coverage %"], "Coverage %") || "0%"} coverage. ${numericCell(categoryRow, "Needs Build") > 0 ? "Build gaps remain; start with the highest market daily sales rows." : "Coverage is full by the current heuristic, so the next move is optimization: improve weak active listings and copy useful winner cues."}`;
+
+  if (shopRows.length) {
+    const chartRows = shopRows.slice(0, 10).reverse();
+    Plotly.newPlot("market-control-shop-chart", [{
+      type: "bar",
+      orientation: "h",
+      x: chartRows.map(row => row["Segment Daily Sales"]),
+      y: chartRows.map(row => row.Shop),
+      marker: { color: "#0f766e" },
+      hovertemplate: "%{y}<br>Segment daily sales: %{x:,.1f}<extra></extra>"
+    }], {
+      margin: { l: 150, r: 16, t: 8, b: 44 },
+      xaxis: { title: "Segment daily sales" },
+      paper_bgcolor: "white",
+      plot_bgcolor: "white"
+    }, plotConfig);
+  } else {
+    document.getElementById("market-control-shop-chart").innerHTML = `<div class="empty">No competitor rows are available for this segment.</div>`;
+  }
+
+  renderTable("market-control-shop-share", shopRows, [
+    "Shop", "Segment Daily Sales", "Segment 30D Sales", "Segment Share %",
+    "Market Listings", "Best Listing Daily", "Best Listing", "Market Listing URL", "Market Control Read"
+  ], 30);
+  renderTable("market-control-competitor-listings", competitorRows, [
+    "Rank", "Market Thumbnail", "Market Shop", "Market Daily Sales", "Market 30D Sales",
+    "Segment Share %", "Status", "Market Long Tail", "Matching MyMaravia Listing",
+    "Match Tokens", "Build Recommendation", "Market Control Read", "Market Listing URL"
+  ], 250);
+  renderTable("market-control-my-listings", myListingRows, [
+    "Thumbnail", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales",
+    "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales",
+    "Views", "Favorites", "Recent 30D Revenue", "Product Title",
+    "Actual Tags", "Market Control Read", "Listing URL"
+  ], 100);
+  renderTable("market-control-coverage", coverageRows, [
+    "Matching MyMaravia Listing", "Covered Competitor Daily", "Covered 30D",
+    "Covered Share %", "Competitor Rows Covered", "Top Competitor Row",
+    "Repeated Match Cues", "Market Control Read"
+  ], 80);
+  renderTable("market-control-actions", actionRows, ["Cue / Action", "Evidence", "Next Edit", "Market Control Read"], 20);
+}
+
 function sortListingRows(rows) {
   const sort = document.getElementById("listing-sort").value;
   const sortMap = {
@@ -2163,20 +2529,13 @@ function renderMyMaravia() {
   if (listingQuery) diagnosticRows = diagnosticRows.filter(row => Object.values(row).join(" ").toLowerCase().includes(listingQuery));
   document.getElementById("mymaravia-listing-count").textContent =
     diagnosticRows.length === allDiagnostics.length
-      ? `Showing all ${fmt(allDiagnostics.length, "Listing Count")} listing diagnostics`
-      : `Showing ${fmt(diagnosticRows.length, "Listing Count")} of ${fmt(allDiagnostics.length, "Listing Count")} listing diagnostics`;
-  renderTable("mymaravia-listing-diagnostics", diagnosticRows, [
-    "Priority", "Conquest Status", "Thumbnail", "State", "Product Category", "Product Title",
-    "Tags", "Tags Source", "Best Guess Tags", "Views", "Favorites", "View-Favorite Rate %", "Recent 7D Sales",
-    "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales", "Sales / 100 Views",
-    "Recent 30D Revenue", "Recent 180D Revenue", "Sales Rate Window Days", "Market Share %", "Market State",
-    "Top Competitor Thumbnail", "Top Competitor", "Top Competitor Shop", "Top Competitor Daily Sales",
-    "Top Competitor 30D Sales", "Top Competitor eRank 7D Sales", "Top Competitor eRank 30D Sales",
-    "Top Competitor Avg Daily Sales (30D)", "Top Competitor Active Listings",
-    "Top Competitor Review Corpus Count", "Top Competitor 90D Reviews", "Top Competitor 365D Reviews",
-    "Top Competitor Avg Rating", "Top Competitor Production Tag", "Top Competitor Trend",
-    "Top Competitor Listing URL", "Leader Gap Daily",
-    "Leader Match %", "Recommended Move", "CTR Data Status", "Listing URL"
+      ? `Showing all ${fmt(allDiagnostics.length, "Listing Count")} listing matchups`
+      : `Showing ${fmt(diagnosticRows.length, "Listing Count")} of ${fmt(allDiagnostics.length, "Listing Count")} listing matchups`;
+  renderTable("mymaravia-listing-diagnostics", buildBattlePlanRows(diagnosticRows, my.myListings || []), [
+    "Priority", "Conquest Status", "Target Category",
+    "My Thumbnail", "My Listing", "My Actual Tags", "My Daily Sales", "My 30D Sales", "My Recent 30D Sales", "My Market Share %",
+    "Competitor Thumbnail", "Competing Listing", "Competing Shop", "Competing Tags", "Competing Daily Sales", "Competing 30D Sales", "Competitor Market Share %",
+    "Market Daily Sales", "Market Listings", "Leader Gap Daily", "Recommended Move", "My Listing URL", "Competitor Listing URL"
   ], 300);
 
   const category = document.getElementById("my-category-filter")?.value || "";
@@ -2201,7 +2560,7 @@ function renderMyMaravia() {
   ], 250);
 
   renderTable("mymaravia-listings", (my.myListings || []).map(withDailySales), [
-    "Thumbnail", "Weekly Sales Graph", "Recent Daily Sales", "Recent Weekly Sales", "Weekly Trend", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Tags Source", "Best Guess Tags",
+    "Thumbnail", "Weekly Sales Graph", "Recent Daily Sales", "Recent Weekly Sales", "Weekly Trend", "State", "Product Category", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Actual Tags", "Tags", "Tags Source",
     "Recent 7D Sales", "Recent 30D Sales", "Recent 90D Sales", "Recent 180D Sales",
     "Recent Reviews", "Recent Avg Rating", "Review Corpus Count", "Review Corpus 90D", "Sales Rate Window Days",
     "Views", "Favorites", "Tags Count", "Listing URL"
@@ -2803,6 +3162,38 @@ function initMyMaraviaFilters() {
   });
 }
 
+function initMarketControlFilters() {
+  const segmentSelect = document.getElementById("market-segment-filter");
+  if (!segmentSelect) return;
+
+  if (segmentSelect.dataset.ready !== "true") {
+    marketSegmentCategories().forEach(category => {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      segmentSelect.appendChild(option);
+    });
+    segmentSelect.dataset.ready = "true";
+  }
+
+  const segment = activeMarketSegment();
+  if (segment) segmentSelect.value = segment;
+
+  ["market-segment-filter", "market-segment-sort", "market-segment-search"].forEach(id => {
+    const element = document.getElementById(id);
+    if (!element || element.dataset.bound === "true") return;
+    element.addEventListener("input", () => {
+      if (id === "market-segment-filter") selectedMarketSegment = element.value;
+      renderMarketControl();
+    });
+    element.addEventListener("change", () => {
+      if (id === "market-segment-filter") selectedMarketSegment = element.value;
+      renderMarketControl();
+    });
+    element.dataset.bound = "true";
+  });
+}
+
 function initCompanyProfile() {
   const allCompanies = companyStats();
   if (!selectedCompany) {
@@ -2910,6 +3301,8 @@ function renderAll() {
   renderOpportunity();
   initMyMaraviaFilters();
   renderMyMaravia();
+  initMarketControlFilters();
+  renderMarketControl();
   renderMetrics();
   renderStatusTable("latest-ok", dashboard.automation.latestOk, ["Status", "Run Timestamp", "Pipeline / Stage", "Automation Version", "eRank Sales Date", "Next Action"]);
   renderStatusTable("latest-problem", dashboard.automation.latestProblem, ["Status", "Run Timestamp", "Pipeline / Stage", "Blocker / Issue", "Next Action"]);

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cronk Research</title>
-  <link rel="stylesheet" href="assets/styles.css?v=graph-tags-cleanup-20260601-1">
+  <link rel="stylesheet" href="assets/styles.css?v=nameplate-product-split-20260601-1">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -20,6 +20,7 @@
     <nav class="tabs" aria-label="Dashboard sections">
       <button class="tab active" data-view="opportunity">Opportunity</button>
       <button class="tab" data-view="mymaravia">MyMaravia</button>
+      <button class="tab" data-view="market-control">Market Control</button>
       <button class="tab" data-view="overview">Overview</button>
       <button class="tab" data-view="comparison">Comparison</button>
       <button class="tab" data-view="company">Company</button>
@@ -135,6 +136,56 @@
             </div>
           </div>
           <div id="mymaravia-long-tail-queue"></div>
+        </section>
+      </section>
+
+      <section id="market-control" class="view">
+        <div id="market-control-metrics" class="metric-grid"></div>
+        <section class="panel">
+          <div class="panel-head with-control">
+            <div>
+              <h2>Product Segment Control</h2>
+              <p id="market-control-count" class="subtle listing-count"></p>
+            </div>
+            <div class="listing-controls">
+              <select id="market-segment-filter" aria-label="Product segment filter"></select>
+              <select id="market-segment-sort" aria-label="Market segment listing sort">
+                <option value="daily-desc">Competitor daily sales: high to low</option>
+                <option value="share-desc">Segment share: high to low</option>
+                <option value="shop-asc">Shop: A to Z</option>
+              </select>
+              <input id="market-segment-search" type="search" placeholder="Filter listings, shops, cues">
+            </div>
+          </div>
+          <div id="market-control-summary" class="callout"></div>
+          <div id="market-control-shop-chart" class="chart"></div>
+          <div id="market-control-shop-share"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Competitor Listings Driving The Segment</h2>
+          </div>
+          <div id="market-control-competitor-listings"></div>
+        </section>
+        <div class="grid two-wide">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>MyMaravia Listings In This Segment</h2>
+            </div>
+            <div id="market-control-my-listings"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Coverage By MyMaravia Listing</h2>
+            </div>
+            <div id="market-control-coverage"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Winner Cues And Action Queue</h2>
+          </div>
+          <div id="market-control-actions"></div>
         </section>
       </section>
 
@@ -445,6 +496,6 @@
       </section>
     </main>
   </div>
-  <script src="assets/app.js?v=graph-tags-cleanup-20260601-1"></script>
+  <script src="assets/app.js?v=nameplate-product-split-20260601-1"></script>
 </body>
 </html>
