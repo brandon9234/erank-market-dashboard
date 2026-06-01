@@ -2,7 +2,8 @@ let dashboard;
 let selectedCompany = "";
 let selectedCompanyProduction = "";
 let selectedListingCycleKey = "";
-const DATA_ASSET_VERSION = "weekly-cycles-20260531-1";
+let selectedBuyerMomentId = "";
+const DATA_ASSET_VERSION = "buyer-moments-20260531-1";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -31,7 +32,9 @@ const numericColumns = new Set([
   "eRank Avg Daily Sales (30D)", "eRank Total Sales",
   "Estimated Monthly Sales", "Estimated Sales / Active Listing", "Reviews / Active Listing",
   "Sales Per Review Used", "Observed Days", "Estimated Weekly Sales", "Recent Weekly Sales",
-  "Prior Weekly Sales", "Peak Weekly Sales", "Cycle Weeks Covered"
+  "Prior Weekly Sales", "Peak Weekly Sales", "Cycle Weeks Covered",
+  "Moment Estimated Sales", "Moment Avg Weekly Sales", "Moment Review Count",
+  "Moment Weeks", "Moment Weeks With Demand", "Matching Listings", "Listings With Velocity"
   , "Draft Listings", "My Daily Sales", "Current Market Daily Sales", "Current Market Share %",
   "Fix Conversion", "Saturated / Niche Down", "Active Listings", "My Category Daily Sales",
   "Market Daily Sales", "My Market Share %", "Top Competitor Daily Sales", "Leader Gap Daily",
@@ -55,7 +58,8 @@ const wrappedColumns = new Set([
   "Top Competitor Shop", "Recommended Move", "CTR Data Status", "Market State",
   "Conquest Status", "Trend Source", "Trend Confidence", "Top Competitor Tags",
   "Top Competitor Listing URL", "Top Competitor Production Tag", "Top Competitor Trend",
-  "Cycle Confidence", "Weekly Trend"
+  "Cycle Confidence", "Weekly Trend", "Buyer Moment", "Moment Window", "Matched Cues",
+  "Moment Source", "Top Listing", "Top Shop"
 ]);
 
 const thumbnailColumns = new Set(["Thumbnail", "Listing Thumbnail", "Market Thumbnail", "Top Competitor Thumbnail"]);
@@ -776,6 +780,497 @@ function openListingCycle(cycleKey, options = {}) {
   if (options.scroll !== false) {
     document.getElementById("listing-cycle-panel")?.scrollIntoView({ block: "start" });
   }
+}
+
+const buyerMomentDefinitions = [
+  {
+    id: "mothers-day",
+    label: "Mother's Day",
+    windowStart: "04-15",
+    windowEnd: "05-25",
+    cues: ["mother's day", "mothers day", "mom", "mama", "mommy", "mother", "grandma", "grandmother", "nana", "new mom", "wife from kids"]
+  },
+  {
+    id: "fathers-day",
+    label: "Father's Day",
+    windowStart: "06-01",
+    windowEnd: "06-30",
+    cues: ["father's day", "fathers day", "dad", "daddy", "father", "grandpa", "grandfather", "papa", "stepdad", "bonus dad"]
+  },
+  {
+    id: "christmas",
+    label: "Christmas / Holiday",
+    windowStart: "11-10",
+    windowEnd: "12-31",
+    cues: ["christmas", "xmas", "holiday gift", "stocking stuffer", "secret santa", "ornament", "santa", "christmas gift"]
+  },
+  {
+    id: "valentines-day",
+    label: "Valentine's Day",
+    windowStart: "01-20",
+    windowEnd: "02-20",
+    cues: ["valentine", "valentines", "valentine's day", "galentine", "love gift", "boyfriend gift", "girlfriend gift"]
+  },
+  {
+    id: "graduation",
+    label: "Graduation",
+    windowStart: "04-15",
+    windowEnd: "06-20",
+    cues: ["graduation", "graduate", "grad gift", "class of", "senior gift", "college grad", "high school grad"]
+  },
+  {
+    id: "teacher-appreciation",
+    label: "Teacher Appreciation",
+    windowStart: "04-15",
+    windowEnd: "05-20",
+    cues: ["teacher appreciation", "teacher gift", "teacher", "principal", "school nurse", "counselor gift", "classroom"]
+  },
+  {
+    id: "back-to-school",
+    label: "Back To School",
+    windowStart: "07-15",
+    windowEnd: "09-10",
+    cues: ["back to school", "first day of school", "school year", "classroom decor", "teacher desk", "teacher name sign"]
+  },
+  {
+    id: "wedding",
+    label: "Wedding Season",
+    windowStart: "04-01",
+    windowEnd: "10-31",
+    cues: ["wedding", "bride", "groom", "bridal", "bridesmaid", "groomsmen", "maid of honor", "engagement", "newlywed"]
+  },
+  {
+    id: "anniversary",
+    label: "Anniversary",
+    windowStart: "01-01",
+    windowEnd: "12-31",
+    cues: ["anniversary", "years together", "couple gift", "husband gift", "wife gift"]
+  },
+  {
+    id: "birthday",
+    label: "Birthday",
+    windowStart: "01-01",
+    windowEnd: "12-31",
+    cues: ["birthday", "bday", "birth day", "turning 30", "turning 40", "turning 50", "milestone birthday"]
+  },
+  {
+    id: "housewarming",
+    label: "Housewarming / New Home",
+    windowStart: "03-01",
+    windowEnd: "10-31",
+    cues: ["housewarming", "new home", "new homeowner", "homeowner gift", "closing gift", "realtor gift", "real estate closing"]
+  },
+  {
+    id: "new-baby",
+    label: "New Baby / New Parent",
+    windowStart: "01-01",
+    windowEnd: "12-31",
+    cues: ["new baby", "baby shower", "new mom", "new dad", "pregnancy", "nursery", "birth announcement", "first mother's day"]
+  },
+  {
+    id: "pet-memorial",
+    label: "Pet Memorial",
+    windowStart: "01-01",
+    windowEnd: "12-31",
+    cues: ["pet memorial", "dog memorial", "cat memorial", "pet loss", "rainbow bridge", "memorial gift"]
+  },
+  {
+    id: "sympathy-memorial",
+    label: "Sympathy / Memorial",
+    windowStart: "01-01",
+    windowEnd: "12-31",
+    cues: ["sympathy", "memorial", "remembrance", "in memory", "bereavement", "loss of"]
+  },
+  {
+    id: "retirement",
+    label: "Retirement",
+    windowStart: "01-01",
+    windowEnd: "12-31",
+    cues: ["retirement", "retiree", "retired", "farewell gift", "going away gift"]
+  },
+  {
+    id: "halloween",
+    label: "Halloween",
+    windowStart: "09-15",
+    windowEnd: "10-31",
+    cues: ["halloween", "spooky", "witch", "pumpkin", "trick or treat", "ghost"]
+  },
+  {
+    id: "thanksgiving",
+    label: "Thanksgiving / Host Gift",
+    windowStart: "10-20",
+    windowEnd: "11-30",
+    cues: ["thanksgiving", "hostess gift", "host gift", "fall decor", "friendsgiving", "grateful"]
+  },
+  {
+    id: "easter",
+    label: "Easter",
+    windowStart: "03-01",
+    windowEnd: "04-20",
+    cues: ["easter", "bunny", "easter basket", "he is risen"]
+  },
+  {
+    id: "nurse-appreciation",
+    label: "Nurse Appreciation",
+    windowStart: "05-01",
+    windowEnd: "05-20",
+    cues: ["nurse", "nurse appreciation", "nurses week", "rn gift", "lpn gift", "medical assistant"]
+  },
+  {
+    id: "boss-admin-day",
+    label: "Boss / Admin Day",
+    windowStart: "04-01",
+    windowEnd: "10-20",
+    cues: ["boss day", "boss's day", "boss gift", "admin day", "administrative professional", "office manager gift"]
+  }
+];
+
+function normalizeMomentText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9'\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function listingMomentText(row) {
+  return normalizeMomentText([
+    row["Product Title"],
+    row.Tags,
+    row["Actual Tags"],
+    row["Best Guess Tags"],
+    row["Product Category"],
+    row["Product Substrate Category"],
+    row["Category Aliases"],
+    row["Buyer Intent"]
+  ].filter(Boolean).join(" "));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function cueMatches(text, cue) {
+  const clean = normalizeMomentText(cue);
+  if (!clean) return false;
+  if (clean.includes(" ") || clean.includes("'") || clean.includes("-")) {
+    return text.includes(clean);
+  }
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(clean)}([^a-z0-9]|$)`).test(text);
+}
+
+function matchedBuyerMomentCues(row, definition) {
+  const text = listingMomentText(row);
+  return definition.cues.filter(cue => cueMatches(text, cue));
+}
+
+function buyerMomentDefinition(id) {
+  return buyerMomentDefinitions.find(definition => definition.id === id) || buyerMomentDefinitions[0];
+}
+
+function parseIsoDate(value) {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDaysIso(value, days) {
+  const date = parseIsoDate(value);
+  if (!date) return value;
+  date.setUTCDate(date.getUTCDate() + days);
+  return isoDate(date);
+}
+
+function formatDateLabel(value) {
+  const date = parseIsoDate(value);
+  if (!date) return value || "";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+function formatMomentWindow(range) {
+  if (!range) return "";
+  return `${formatDateLabel(range.start)} - ${formatDateLabel(range.end)}`;
+}
+
+function buyerMomentWindowForYear(definition, year) {
+  const endYear = definition.windowEnd < definition.windowStart ? year + 1 : year;
+  return {
+    plannedStart: `${year}-${definition.windowStart}`,
+    plannedEnd: `${endYear}-${definition.windowEnd}`,
+    year
+  };
+}
+
+function availableBuyerMomentWindows(definition) {
+  const meta = dashboard.reviewCorpus?.listingCycleMeta || {};
+  const dataStart = meta.weekStart || dashboard.reviewCorpus?.earliestReviewISO || "";
+  const dataEnd = dashboard.reviewCorpus?.latestReviewISO || meta.weekEnd || "";
+  const startDate = parseIsoDate(dataStart);
+  const endDate = parseIsoDate(dataEnd);
+  if (!startDate || !endDate) return [];
+
+  const windows = [];
+  for (let year = startDate.getUTCFullYear() - 1; year <= endDate.getUTCFullYear() + 1; year += 1) {
+    const range = buyerMomentWindowForYear(definition, year);
+    if (range.plannedEnd < dataStart || range.plannedStart > dataEnd) continue;
+    const start = range.plannedStart < dataStart ? dataStart : range.plannedStart;
+    const end = range.plannedEnd > dataEnd ? dataEnd : range.plannedEnd;
+    windows.push({
+      ...range,
+      start,
+      end,
+      completed: range.plannedEnd <= dataEnd
+    });
+  }
+  return windows;
+}
+
+function activeBuyerMomentWindow(definition) {
+  const windows = availableBuyerMomentWindows(definition);
+  const completed = windows.filter(window => window.completed);
+  const candidates = completed.length ? completed : windows;
+  return candidates.sort((a, b) => b.end.localeCompare(a.end))[0] || null;
+}
+
+function weekOverlapsMomentWindow(weekStart, window) {
+  if (!window || !weekStart) return false;
+  const weekEnd = addDaysIso(weekStart, 6);
+  return weekStart <= window.end && weekEnd >= window.start;
+}
+
+function roundOne(value) {
+  return Number((value || 0).toFixed(1));
+}
+
+function listingRowKey(row) {
+  return `${row.Shop || ""}|${row["Listing URL"] || row["Product Title"] || ""}`;
+}
+
+function buyerMomentRows(momentId) {
+  const definition = buyerMomentDefinition(momentId);
+  const window = activeBuyerMomentWindow(definition);
+  const cycles = listingCycleMap();
+  return getListingRows().map(row => {
+    const cues = matchedBuyerMomentCues(row, definition);
+    if (!cues.length) return null;
+    const cycleKey = String(row["Weekly Cycle Key"] || "");
+    const cycle = cycles.get(cycleKey);
+    const weeks = cycle && window
+      ? fullListingCycleRows(cycle).filter(week => weekOverlapsMomentWindow(week["Week Start"], window))
+      : [];
+    const estimatedSales = weeks.reduce((sum, week) => sum + numericCell(week, "Estimated Weekly Sales"), 0);
+    const reviewCount = weeks.reduce((sum, week) => sum + numericCell(week, "Review Count"), 0);
+    const weeksWithDemand = weeks.filter(week => numericCell(week, "Estimated Weekly Sales") > 0).length;
+    const peak = weeks.reduce((winner, week) => {
+      if (!winner) return week;
+      const delta = numericCell(week, "Estimated Weekly Sales") - numericCell(winner, "Estimated Weekly Sales");
+      return delta > 0 ? week : winner;
+    }, null);
+    return {
+      ...row,
+      "Buyer Moment": definition.label,
+      "Moment Window": formatMomentWindow(window),
+      "Matched Cues": cues.slice(0, 8).join(", "),
+      "Moment Estimated Sales": roundOne(estimatedSales),
+      "Moment Avg Weekly Sales": roundOne(weeks.length ? estimatedSales / weeks.length : 0),
+      "Moment Review Count": reviewCount,
+      "Moment Weeks": weeks.length,
+      "Moment Weeks With Demand": weeksWithDemand,
+      "Peak Moment Week": peak?.["Week Start"] || "",
+      "Moment Source": cycle?.source || "No listing weekly review cycle matched",
+      _momentWeeks: weeks,
+      _momentKey: listingRowKey(row)
+    };
+  }).filter(Boolean);
+}
+
+function buyerMomentSummaries() {
+  return buyerMomentDefinitions.map(definition => {
+    const rows = buyerMomentRows(definition.id);
+    if (!rows.length) return null;
+    const observed = rows.filter(row => numericCell(row, "Moment Estimated Sales") > 0);
+    const totalSales = rows.reduce((sum, row) => sum + numericCell(row, "Moment Estimated Sales"), 0);
+    const reviewCount = rows.reduce((sum, row) => sum + numericCell(row, "Moment Review Count"), 0);
+    const top = sortBuyerMomentRows(rows, "velocity-desc")[0] || {};
+    const window = activeBuyerMomentWindow(definition);
+    return {
+      "Moment ID": definition.id,
+      "Buyer Moment": definition.label,
+      "Moment Window": formatMomentWindow(window),
+      "Moment Estimated Sales": roundOne(totalSales),
+      "Moment Avg Weekly Sales": roundOne(observed.length ? totalSales / Math.max(...observed.map(row => numericCell(row, "Moment Weeks") || 1)) : 0),
+      "Moment Review Count": reviewCount,
+      "Matching Listings": rows.length,
+      "Listings With Velocity": observed.length,
+      "Top Shop": top.Shop || "",
+      "Top Listing": top["Product Title"] || "",
+      "Matched Cues": definition.cues.slice(0, 10).join(", ")
+    };
+  }).filter(Boolean).sort((a, b) =>
+    numericCell(b, "Moment Estimated Sales") - numericCell(a, "Moment Estimated Sales") ||
+    numericCell(b, "Matching Listings") - numericCell(a, "Matching Listings") ||
+    String(a["Buyer Moment"]).localeCompare(String(b["Buyer Moment"]))
+  );
+}
+
+function sortBuyerMomentRows(rows, forcedSort = null) {
+  const sort = forcedSort || document.getElementById("buyer-moment-sort")?.value || "velocity-desc";
+  const sortMap = {
+    "velocity-desc": ["Moment Avg Weekly Sales", "desc"],
+    "sales-desc": ["Moment Estimated Sales", "desc"],
+    "reviews-desc": ["Moment Review Count", "desc"],
+    "daily-desc": ["Est. Daily Sales", "desc"],
+    "thirty-desc": ["Est. 30D Sales", "desc"]
+  };
+  const [column, direction] = sortMap[sort] || sortMap["velocity-desc"];
+  return rows.slice().sort((a, b) => {
+    const delta = numericCell(a, column) - numericCell(b, column);
+    const ordered = direction === "asc" ? delta : -delta;
+    if (ordered) return ordered;
+    return numericCell(b, "Moment Estimated Sales") - numericCell(a, "Moment Estimated Sales") ||
+      numericCell(a, "Overall Rank") - numericCell(b, "Overall Rank") ||
+      String(a.Shop || "").localeCompare(String(b.Shop || "")) ||
+      String(a["Product Title"] || "").localeCompare(String(b["Product Title"] || ""));
+  });
+}
+
+function selectedBuyerMomentSummary(summaries) {
+  if (!summaries.length) return null;
+  if (!selectedBuyerMomentId || !summaries.some(row => row["Moment ID"] === selectedBuyerMomentId)) {
+    selectedBuyerMomentId = summaries[0]["Moment ID"];
+  }
+  return summaries.find(row => row["Moment ID"] === selectedBuyerMomentId) || summaries[0];
+}
+
+function initBuyerMomentFilters() {
+  const select = document.getElementById("buyer-moment-filter");
+  if (!select) return;
+  const summaries = buyerMomentSummaries();
+  const selected = selectedBuyerMomentSummary(summaries);
+  select.innerHTML = "";
+  summaries.forEach(row => {
+    const option = document.createElement("option");
+    option.value = row["Moment ID"];
+    option.textContent = `${row["Buyer Moment"]} (${fmt(row["Matching Listings"], "Matching Listings")})`;
+    select.appendChild(option);
+  });
+  if (selected) select.value = selected["Moment ID"];
+
+  [
+    ["buyer-moment-filter", "change"],
+    ["buyer-moment-sort", "change"],
+    ["buyer-moment-search", "input"]
+  ].forEach(([id, eventName]) => {
+    const element = document.getElementById(id);
+    if (!element || element.dataset.bound === "true") return;
+    element.addEventListener(eventName, () => {
+      if (id === "buyer-moment-filter") selectedBuyerMomentId = element.value;
+      renderBuyerMoments();
+    });
+    element.dataset.bound = "true";
+  });
+}
+
+function renderBuyerMomentWeekChart(rows) {
+  const target = document.getElementById("buyer-moment-week-chart");
+  if (!target) return;
+  const byWeek = new Map();
+  rows.forEach(row => {
+    (row._momentWeeks || []).forEach(week => {
+      const key = week["Week Start"];
+      if (!byWeek.has(key)) {
+        byWeek.set(key, { "Week Start": key, "Estimated Weekly Sales": 0, "Review Count": 0, listingKeys: new Set() });
+      }
+      const item = byWeek.get(key);
+      const sales = numericCell(week, "Estimated Weekly Sales");
+      item["Estimated Weekly Sales"] += sales;
+      item["Review Count"] += numericCell(week, "Review Count");
+      if (sales > 0) item.listingKeys.add(row._momentKey);
+    });
+  });
+  const data = [...byWeek.values()].sort((a, b) => String(a["Week Start"]).localeCompare(String(b["Week Start"]))).map(row => ({
+    "Week Start": row["Week Start"],
+    "Estimated Weekly Sales": roundOne(row["Estimated Weekly Sales"]),
+    "Review Count": row["Review Count"],
+    "Matching Listings": row.listingKeys.size
+  }));
+  if (!data.length) {
+    target.innerHTML = `<div class="empty">No weekly review-sales data is available for this buyer moment window.</div>`;
+    document.getElementById("buyer-moment-week-table").innerHTML = "";
+    return;
+  }
+  Plotly.newPlot("buyer-moment-week-chart", [{
+    type: "bar",
+    x: data.map(row => row["Week Start"]),
+    y: data.map(row => row["Estimated Weekly Sales"]),
+    customdata: data.map(row => [row["Review Count"], row["Matching Listings"]]),
+    marker: { color: "#0f766e" },
+    hovertemplate: "%{x}<br>Estimated weekly sales: %{y:,.1f}<br>Reviews: %{customdata[0]:,.0f}<br>Listings with velocity: %{customdata[1]:,.0f}<extra></extra>"
+  }], {
+    margin: { l: 58, r: 18, t: 8, b: 44 },
+    yaxis: { title: "Estimated weekly sales" },
+    paper_bgcolor: "white",
+    plot_bgcolor: "white"
+  }, plotConfig);
+  renderTable("buyer-moment-week-table", data, ["Week Start", "Estimated Weekly Sales", "Review Count", "Matching Listings"], 12);
+}
+
+function renderBuyerMoments() {
+  const summaryTarget = document.getElementById("buyer-moment-summary");
+  if (!summaryTarget) return;
+  const summaries = buyerMomentSummaries();
+  const selected = selectedBuyerMomentSummary(summaries);
+  const select = document.getElementById("buyer-moment-filter");
+  if (select && selected) select.value = selected["Moment ID"];
+
+  if (!selected) {
+    summaryTarget.innerHTML = "No buyer moments were detected in this snapshot.";
+    document.getElementById("buyer-moment-metrics").innerHTML = "";
+    document.getElementById("buyer-moment-count").textContent = "";
+    document.getElementById("buyer-moment-rollup-chart").innerHTML = `<div class="empty">No buyer moment rollups available.</div>`;
+    document.getElementById("buyer-moment-rollups").innerHTML = "";
+    document.getElementById("buyer-moment-listings").innerHTML = "";
+    document.getElementById("buyer-moment-week-chart").innerHTML = "";
+    document.getElementById("buyer-moment-week-table").innerHTML = "";
+    return;
+  }
+
+  let rows = buyerMomentRows(selected["Moment ID"]);
+  const query = (document.getElementById("buyer-moment-search")?.value || "").trim().toLowerCase();
+  if (query) {
+    rows = rows.filter(row => Object.values(row).join(" ").toLowerCase().includes(query));
+  }
+  rows = sortBuyerMomentRows(rows);
+  const observed = rows.filter(row => numericCell(row, "Moment Estimated Sales") > 0);
+  document.getElementById("buyer-moment-metrics").innerHTML = [
+    metric("Buyer moments found", fmt(summaries.length, "Listing Count")),
+    metric("Matching listings", fmt(rows.length, "Matching Listings")),
+    metric("Listings with velocity", fmt(observed.length, "Listings With Velocity")),
+    metric("Moment est. sales", fmt(rows.reduce((sum, row) => sum + numericCell(row, "Moment Estimated Sales"), 0), "Moment Estimated Sales"))
+  ].join("");
+  document.getElementById("buyer-moment-count").textContent =
+    `Showing ${fmt(rows.length, "Matching Listings")} ${selected["Buyer Moment"]} listings from ${selected["Moment Window"]}`;
+  summaryTarget.innerHTML =
+    `<strong>${escapeHtml(selected["Buyer Moment"])}</strong> is ranked by review-derived weekly sales velocity inside ${escapeHtml(selected["Moment Window"])}. The source is listing weekly review counts converted with the same eRank/listing calibration used by the Listings sales-cycle graph.`;
+
+  renderBar("buyer-moment-rollup-chart", summaries, "Moment Estimated Sales", "Buyer Moment", 20, "#0f766e");
+  renderTable("buyer-moment-rollups", summaries, [
+    "Buyer Moment", "Moment Window", "Moment Estimated Sales", "Moment Review Count",
+    "Matching Listings", "Listings With Velocity", "Top Shop", "Top Listing", "Matched Cues"
+  ], 30);
+  renderBuyerMomentWeekChart(rows);
+  renderTable("buyer-moment-listings", rows, [
+    "Buyer Moment", "Moment Window", "Moment Avg Weekly Sales", "Moment Estimated Sales", "Moment Review Count",
+    "Moment Weeks With Demand", "Peak Moment Week", "Thumbnail", "Weekly Sales Graph",
+    "Shop", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Best Guess Tags",
+    "Product Category", "Product Substrate Category", "Production Tag", "Matched Cues",
+    "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Moment Source", "Listing URL"
+  ], 250);
 }
 
 function numericCell(row, column) {
@@ -2105,6 +2600,8 @@ function renderAll() {
   renderTrendTable("shop-trends", dashboard.comparison.shopTrends, ["Shop", "Trend", "Recent Avg Daily Sales", "Prior Avg Daily Sales", "Delta", "Delta %", "Latest Complete Date", "Latest Complete Daily Sales", "Total Daily Sales In Range", "Days Used", "Review Count", "Sales Per Review Used", "Trend Confidence", "Trend Source"], 120);
   initCompanyProfile();
   renderListings();
+  initBuyerMomentFilters();
+  renderBuyerMoments();
   renderAskScope();
   initAsk();
   renderBar("category-rollup-chart", dashboard.listing.categoryRollup || [], "Total Est. Daily Sales", "Product Substrate Category", 15, "#1f5fbf");

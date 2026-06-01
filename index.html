@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cronk Research</title>
-  <link rel="stylesheet" href="assets/styles.css?v=weekly-cycles-20260531-1">
+  <link rel="stylesheet" href="assets/styles.css?v=buyer-moments-20260531-1">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -24,6 +24,7 @@
       <button class="tab" data-view="comparison">Comparison</button>
       <button class="tab" data-view="company">Company</button>
       <button class="tab" data-view="ask">Ask</button>
+      <button class="tab" data-view="buyer-moments">Buyer Moments</button>
       <button class="tab" data-view="listings">Listings</button>
       <button class="tab" data-view="operations">Operations</button>
       <button class="tab" data-view="raw">Raw Preview</button>
@@ -330,6 +331,47 @@
         </section>
       </section>
 
+      <section id="buyer-moments" class="view">
+        <div id="buyer-moment-metrics" class="metric-grid"></div>
+        <section class="panel">
+          <div class="panel-head with-control">
+            <div>
+              <h2>Buyer Moment Velocity</h2>
+              <p id="buyer-moment-count" class="subtle listing-count"></p>
+            </div>
+            <div class="listing-controls">
+              <select id="buyer-moment-filter" aria-label="Buyer moment filter"></select>
+              <select id="buyer-moment-sort" aria-label="Buyer moment sort">
+                <option value="velocity-desc">Moment weekly velocity: high to low</option>
+                <option value="sales-desc">Moment estimated sales: high to low</option>
+                <option value="reviews-desc">Moment reviews: high to low</option>
+                <option value="daily-desc">Current daily sales: high to low</option>
+                <option value="thirty-desc">Current 30-day sales: high to low</option>
+              </select>
+              <input id="buyer-moment-search" type="search" placeholder="Filter listings, shops, categories">
+            </div>
+          </div>
+          <div id="buyer-moment-summary" class="callout"></div>
+          <div id="buyer-moment-listings"></div>
+        </section>
+        <div class="grid two-wide">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Buyer Moment Rollups</h2>
+            </div>
+            <div id="buyer-moment-rollup-chart" class="chart"></div>
+            <div id="buyer-moment-rollups"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Selected Moment Sales Curve</h2>
+            </div>
+            <div id="buyer-moment-week-chart" class="chart"></div>
+            <div id="buyer-moment-week-table"></div>
+          </section>
+        </div>
+      </section>
+
       <section id="listings" class="view">
         <div class="grid two-wide">
           <section class="panel">
@@ -415,6 +457,6 @@
       </section>
     </main>
   </div>
-  <script src="assets/app.js?v=weekly-cycles-20260531-1"></script>
+  <script src="assets/app.js?v=buyer-moments-20260531-1"></script>
 </body>
 </html>
