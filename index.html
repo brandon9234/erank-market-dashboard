@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cronk Research</title>
-  <link rel="stylesheet" href="assets/styles.css?v=buyer-moment-timeline-20260601-1">
+  <link rel="stylesheet" href="assets/styles.css?v=buyer-moment-custom-range-20260601-1">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -321,6 +321,18 @@
               <input id="buyer-moment-search" type="search" placeholder="Filter listings, shops, categories">
             </div>
           </div>
+          <div class="buyer-moment-range-controls">
+            <label>
+              <span>Start</span>
+              <input id="buyer-moment-range-start" type="date" aria-label="Custom buyer moment start date">
+            </label>
+            <label>
+              <span>End</span>
+              <input id="buyer-moment-range-end" type="date" aria-label="Custom buyer moment end date">
+            </label>
+            <button id="buyer-moment-apply-range" class="primary-button" type="button">Apply range</button>
+            <button id="buyer-moment-clear-range" class="prompt-button" type="button">Clear range</button>
+          </div>
           <div class="buyer-moment-calendar" aria-label="Buyer moment calendar">
             <div id="buyer-moment-months" class="buyer-moment-months"></div>
             <div class="buyer-moment-timeline-shell">
@@ -333,7 +345,7 @@
         <div class="grid two-wide">
           <section class="panel">
             <div class="panel-head">
-              <h2>Buyer Moment Rollups</h2>
+              <h2>Best-Selling Categories</h2>
             </div>
             <div id="buyer-moment-rollup-chart" class="chart"></div>
             <div id="buyer-moment-rollups"></div>
@@ -433,6 +445,6 @@
       </section>
     </main>
   </div>
-  <script src="assets/app.js?v=buyer-moment-timeline-20260601-1"></script>
+  <script src="assets/app.js?v=buyer-moment-custom-range-20260601-1"></script>
 </body>
 </html>

@@ -510,6 +510,26 @@ input[type="search"] {
   margin: 4px 0 0;
 }
 
+.buyer-moment-range-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+
+.buyer-moment-range-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.buyer-moment-range-controls input[type="date"] {
+  min-width: 165px;
+}
+
 .buyer-moment-calendar {
   margin: 12px 0;
   padding: 10px;
@@ -729,6 +749,14 @@ textarea {
     margin-top: 8px;
   }
   .listing-controls select {
+    width: 100%;
+  }
+  .buyer-moment-range-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .buyer-moment-range-controls input[type="date"],
+  .buyer-moment-range-controls button {
     width: 100%;
   }
   .buyer-moment-months,
