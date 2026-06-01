@@ -510,6 +510,98 @@ input[type="search"] {
   margin: 4px 0 0;
 }
 
+.buyer-moment-calendar {
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  overflow-x: auto;
+}
+
+.buyer-moment-months {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  min-width: 960px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.buyer-moment-months div {
+  padding-left: 6px;
+  border-left: 1px solid #e5ebe6;
+}
+
+.buyer-moment-months div:first-child {
+  border-left: 0;
+}
+
+.buyer-moment-timeline-shell {
+  min-width: 960px;
+  padding-top: 10px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(8.333% - 1px),
+    #edf2ee calc(8.333% - 1px),
+    #edf2ee 8.333%
+  );
+}
+
+.buyer-moment-timeline {
+  position: relative;
+  min-height: 38px;
+}
+
+.buyer-moment-button {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 30px;
+  min-width: 0;
+  padding: 5px 8px 5px 7px;
+  border: 1px solid var(--moment-color);
+  border-left-width: 5px;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.buyer-moment-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buyer-moment-button strong {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.buyer-moment-button.compact strong {
+  display: none;
+}
+
+.buyer-moment-button:hover,
+.buyer-moment-button:focus {
+  background: #f4f8fb;
+}
+
+.buyer-moment-button.active {
+  z-index: 2;
+  background: #e8f2f0;
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.18);
+}
+
 .ask-layout {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
@@ -638,6 +730,10 @@ textarea {
   }
   .listing-controls select {
     width: 100%;
+  }
+  .buyer-moment-months,
+  .buyer-moment-timeline-shell {
+    min-width: 840px;
   }
   .ask-layout {
     grid-template-columns: 1fr;

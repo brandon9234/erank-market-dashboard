@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cronk Research</title>
-  <link rel="stylesheet" href="assets/styles.css?v=buyer-moments-20260531-1">
+  <link rel="stylesheet" href="assets/styles.css?v=buyer-moment-timeline-20260601-1">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
@@ -23,7 +23,6 @@
       <button class="tab" data-view="overview">Overview</button>
       <button class="tab" data-view="comparison">Comparison</button>
       <button class="tab" data-view="company">Company</button>
-      <button class="tab" data-view="ask">Ask</button>
       <button class="tab" data-view="buyer-moments">Buyer Moments</button>
       <button class="tab" data-view="listings">Listings</button>
       <button class="tab" data-view="operations">Operations</button>
@@ -303,34 +302,6 @@
         </section>
       </section>
 
-      <section id="ask" class="view">
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Ask The Sheet</h2>
-              <p id="ask-scope" class="subtle"></p>
-            </div>
-          </div>
-          <div class="ask-layout">
-            <div class="ask-entry">
-              <textarea id="sheet-question" rows="4" placeholder="Ask about listings, shops, categories, daily sales, 30-day sales, MyMaravia coverage, blanks, or opportunities"></textarea>
-              <div class="ask-actions">
-                <button id="sheet-question-submit" class="primary-button" type="button">Ask</button>
-                <button class="prompt-button" type="button" data-question="What are the highest daily sales product categories?">Top categories</button>
-                <button class="prompt-button" type="button" data-question="Where is MyMaravia missing the most coverage?">Coverage gaps</button>
-                <button class="prompt-button" type="button" data-question="What are the best LED desk nameplate listings by 30-day sales?">LED nameplates</button>
-                <button class="prompt-button" type="button" data-question="Which shops are moving up?">Shop movement</button>
-                <button class="prompt-button" type="button" data-question="Which big shops have full-year data for checking seasonality?">Year cycles</button>
-              </div>
-            </div>
-            <div id="sheet-answer" class="ask-answer">
-              <div class="empty">Ask a question to analyze the current snapshot.</div>
-            </div>
-          </div>
-          <div id="sheet-answer-table"></div>
-        </section>
-      </section>
-
       <section id="buyer-moments" class="view">
         <div id="buyer-moment-metrics" class="metric-grid"></div>
         <section class="panel">
@@ -340,7 +311,6 @@
               <p id="buyer-moment-count" class="subtle listing-count"></p>
             </div>
             <div class="listing-controls">
-              <select id="buyer-moment-filter" aria-label="Buyer moment filter"></select>
               <select id="buyer-moment-sort" aria-label="Buyer moment sort">
                 <option value="velocity-desc">Moment weekly velocity: high to low</option>
                 <option value="sales-desc">Moment estimated sales: high to low</option>
@@ -349,6 +319,12 @@
                 <option value="thirty-desc">Current 30-day sales: high to low</option>
               </select>
               <input id="buyer-moment-search" type="search" placeholder="Filter listings, shops, categories">
+            </div>
+          </div>
+          <div class="buyer-moment-calendar" aria-label="Buyer moment calendar">
+            <div id="buyer-moment-months" class="buyer-moment-months"></div>
+            <div class="buyer-moment-timeline-shell">
+              <div id="buyer-moment-timeline" class="buyer-moment-timeline"></div>
             </div>
           </div>
           <div id="buyer-moment-summary" class="callout"></div>
@@ -457,6 +433,6 @@
       </section>
     </main>
   </div>
-  <script src="assets/app.js?v=buyer-moments-20260531-1"></script>
+  <script src="assets/app.js?v=buyer-moment-timeline-20260601-1"></script>
 </body>
 </html>

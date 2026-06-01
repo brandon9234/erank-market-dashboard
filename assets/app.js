@@ -3,7 +3,9 @@ let selectedCompany = "";
 let selectedCompanyProduction = "";
 let selectedListingCycleKey = "";
 let selectedBuyerMomentId = "";
-const DATA_ASSET_VERSION = "buyer-moments-20260531-1";
+let buyerMomentRowsCache = new Map();
+let buyerMomentSummariesCache = null;
+const DATA_ASSET_VERSION = "buyer-moment-timeline-20260601-1";
 
 const numericColumns = new Set([
   "7D Sales", "30D Sales", "Avg Daily Sales (30D)", "Active Listings", "Daily Sales",
@@ -58,7 +60,7 @@ const wrappedColumns = new Set([
   "Top Competitor Shop", "Recommended Move", "CTR Data Status", "Market State",
   "Conquest Status", "Trend Source", "Trend Confidence", "Top Competitor Tags",
   "Top Competitor Listing URL", "Top Competitor Production Tag", "Top Competitor Trend",
-  "Cycle Confidence", "Weekly Trend", "Buyer Moment", "Moment Window", "Matched Cues",
+  "Cycle Confidence", "Weekly Trend", "Buyer Moment", "Moment Timeframe", "Moment Window", "Matched Cues",
   "Moment Source", "Top Listing", "Top Shop"
 ]);
 
@@ -997,6 +999,16 @@ function formatMomentWindow(range) {
   return `${formatDateLabel(range.start)} - ${formatDateLabel(range.end)}`;
 }
 
+function monthDayLabel(monthDay) {
+  const date = parseIsoDate(`2025-${monthDay}`);
+  if (!date) return monthDay;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function formatDefinitionWindow(definition) {
+  return `${monthDayLabel(definition.windowStart)} - ${monthDayLabel(definition.windowEnd)}`;
+}
+
 function buyerMomentWindowForYear(definition, year) {
   const endYear = definition.windowEnd < definition.windowStart ? year + 1 : year;
   return {
@@ -1051,11 +1063,48 @@ function listingRowKey(row) {
   return `${row.Shop || ""}|${row["Listing URL"] || row["Product Title"] || ""}`;
 }
 
+function monthDayParts(monthDay) {
+  const [month, day] = String(monthDay || "").split("-").map(value => Number(value));
+  return { month, day };
+}
+
+function timelineDayIndex(monthDay, endOfDay = false) {
+  const { month, day } = monthDayParts(monthDay);
+  if (!month || !day) return 0;
+  const date = new Date(Date.UTC(2025, month - 1, day));
+  if (Number.isNaN(date.getTime())) return 0;
+  const yearStart = new Date(Date.UTC(2025, 0, 1));
+  const index = Math.floor((date - yearStart) / 86400000);
+  return Math.max(0, Math.min(365, index + (endOfDay ? 1 : 0)));
+}
+
+function buyerMomentTimelineRange(definition) {
+  const start = timelineDayIndex(definition.windowStart);
+  let end = timelineDayIndex(definition.windowEnd, true);
+  if (end <= start) end = 365;
+  const width = Math.max(0, end - start);
+  return {
+    start,
+    end,
+    left: roundOne(start / 365 * 100),
+    width: roundOne(width / 365 * 100)
+  };
+}
+
+function buyerMomentChronology(a, b) {
+  const startDelta = numericCell(a, "Timeline Start") - numericCell(b, "Timeline Start");
+  if (startDelta) return startDelta;
+  const durationDelta = numericCell(b, "Timeline Duration") - numericCell(a, "Timeline Duration");
+  if (durationDelta) return durationDelta;
+  return String(a["Buyer Moment"]).localeCompare(String(b["Buyer Moment"]));
+}
+
 function buyerMomentRows(momentId) {
+  if (buyerMomentRowsCache.has(momentId)) return buyerMomentRowsCache.get(momentId);
   const definition = buyerMomentDefinition(momentId);
   const window = activeBuyerMomentWindow(definition);
   const cycles = listingCycleMap();
-  return getListingRows().map(row => {
+  const rows = getListingRows().map(row => {
     const cues = matchedBuyerMomentCues(row, definition);
     if (!cues.length) return null;
     const cycleKey = String(row["Weekly Cycle Key"] || "");
@@ -1074,6 +1123,7 @@ function buyerMomentRows(momentId) {
     return {
       ...row,
       "Buyer Moment": definition.label,
+      "Moment Timeframe": formatDefinitionWindow(definition),
       "Moment Window": formatMomentWindow(window),
       "Matched Cues": cues.slice(0, 8).join(", "),
       "Moment Estimated Sales": roundOne(estimatedSales),
@@ -1087,10 +1137,13 @@ function buyerMomentRows(momentId) {
       _momentKey: listingRowKey(row)
     };
   }).filter(Boolean);
+  buyerMomentRowsCache.set(momentId, rows);
+  return rows;
 }
 
 function buyerMomentSummaries() {
-  return buyerMomentDefinitions.map(definition => {
+  if (buyerMomentSummariesCache) return buyerMomentSummariesCache;
+  buyerMomentSummariesCache = buyerMomentDefinitions.map(definition => {
     const rows = buyerMomentRows(definition.id);
     if (!rows.length) return null;
     const observed = rows.filter(row => numericCell(row, "Moment Estimated Sales") > 0);
@@ -1098,9 +1151,11 @@ function buyerMomentSummaries() {
     const reviewCount = rows.reduce((sum, row) => sum + numericCell(row, "Moment Review Count"), 0);
     const top = sortBuyerMomentRows(rows, "velocity-desc")[0] || {};
     const window = activeBuyerMomentWindow(definition);
+    const timeline = buyerMomentTimelineRange(definition);
     return {
       "Moment ID": definition.id,
       "Buyer Moment": definition.label,
+      "Moment Timeframe": formatDefinitionWindow(definition),
       "Moment Window": formatMomentWindow(window),
       "Moment Estimated Sales": roundOne(totalSales),
       "Moment Avg Weekly Sales": roundOne(observed.length ? totalSales / Math.max(...observed.map(row => numericCell(row, "Moment Weeks") || 1)) : 0),
@@ -1109,13 +1164,13 @@ function buyerMomentSummaries() {
       "Listings With Velocity": observed.length,
       "Top Shop": top.Shop || "",
       "Top Listing": top["Product Title"] || "",
-      "Matched Cues": definition.cues.slice(0, 10).join(", ")
+      "Matched Cues": definition.cues.slice(0, 10).join(", "),
+      "Timeline Start": timeline.start,
+      "Timeline End": timeline.end,
+      "Timeline Duration": timeline.end - timeline.start
     };
-  }).filter(Boolean).sort((a, b) =>
-    numericCell(b, "Moment Estimated Sales") - numericCell(a, "Moment Estimated Sales") ||
-    numericCell(b, "Matching Listings") - numericCell(a, "Matching Listings") ||
-    String(a["Buyer Moment"]).localeCompare(String(b["Buyer Moment"]))
-  );
+  }).filter(Boolean).sort(buyerMomentChronology);
+  return buyerMomentSummariesCache;
 }
 
 function sortBuyerMomentRows(rows, forcedSort = null) {
@@ -1147,31 +1202,70 @@ function selectedBuyerMomentSummary(summaries) {
   return summaries.find(row => row["Moment ID"] === selectedBuyerMomentId) || summaries[0];
 }
 
-function initBuyerMomentFilters() {
-  const select = document.getElementById("buyer-moment-filter");
-  if (!select) return;
-  const summaries = buyerMomentSummaries();
-  const selected = selectedBuyerMomentSummary(summaries);
-  select.innerHTML = "";
-  summaries.forEach(row => {
-    const option = document.createElement("option");
-    option.value = row["Moment ID"];
-    option.textContent = `${row["Buyer Moment"]} (${fmt(row["Matching Listings"], "Matching Listings")})`;
-    select.appendChild(option);
+function layoutBuyerMomentTimeline(summaries) {
+  const items = summaries.map(row => {
+    const definition = buyerMomentDefinition(row["Moment ID"]);
+    const range = buyerMomentTimelineRange(definition);
+    return { ...row, ...range };
+  }).sort((a, b) =>
+    numericCell(a, "Timeline Start") - numericCell(b, "Timeline Start") ||
+    numericCell(b, "Timeline Duration") - numericCell(a, "Timeline Duration") ||
+    String(a["Buyer Moment"]).localeCompare(String(b["Buyer Moment"]))
+  );
+  const laneEnds = [];
+  items.forEach(item => {
+    let lane = laneEnds.findIndex(end => item.start >= end + 2);
+    if (lane < 0) {
+      lane = laneEnds.length;
+      laneEnds.push(0);
+    }
+    item.lane = lane;
+    laneEnds[lane] = item.end;
   });
-  if (selected) select.value = selected["Moment ID"];
+  return { items, laneCount: laneEnds.length };
+}
+
+function renderBuyerMomentTimeline(summaries) {
+  const monthTarget = document.getElementById("buyer-moment-months");
+  const timelineTarget = document.getElementById("buyer-moment-timeline");
+  if (!monthTarget || !timelineTarget) return;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  monthTarget.innerHTML = months.map(month => `<div>${month}</div>`).join("");
+  const { items, laneCount } = layoutBuyerMomentTimeline(summaries);
+  const colors = ["#0f766e", "#1f5fbf", "#8a5a00", "#9f1239", "#6d28d9", "#0e7490"];
+  timelineTarget.style.height = `${Math.max(1, laneCount) * 38}px`;
+  timelineTarget.innerHTML = items.map((item, index) => {
+    const active = item["Moment ID"] === selectedBuyerMomentId ? " active" : "";
+    const compact = item.width < 11 ? " compact" : "";
+    const color = colors[index % colors.length];
+    const style = [
+      `left:${item.left}%`,
+      `width:${item.width}%`,
+      `top:${item.lane * 38}px`,
+      `--moment-color:${color}`
+    ].join(";");
+    const title = `${item["Buyer Moment"]}: ${item["Moment Timeframe"]}, ${fmt(item["Matching Listings"], "Matching Listings")} matching listings`;
+    return `<button class="buyer-moment-button${active}${compact}" type="button" data-moment-id="${escapeHtml(item["Moment ID"])}" style="${style}" title="${escapeHtml(title)}"><span>${escapeHtml(item["Buyer Moment"])}</span><strong>${escapeHtml(fmt(item["Matching Listings"], "Matching Listings"))}</strong></button>`;
+  }).join("");
+  timelineTarget.querySelectorAll(".buyer-moment-button").forEach(button => {
+    button.addEventListener("click", () => {
+      selectedBuyerMomentId = button.dataset.momentId || "";
+      renderBuyerMoments();
+    });
+  });
+}
+
+function initBuyerMomentFilters() {
+  const summaries = buyerMomentSummaries();
+  selectedBuyerMomentSummary(summaries);
 
   [
-    ["buyer-moment-filter", "change"],
     ["buyer-moment-sort", "change"],
     ["buyer-moment-search", "input"]
   ].forEach(([id, eventName]) => {
     const element = document.getElementById(id);
     if (!element || element.dataset.bound === "true") return;
-    element.addEventListener(eventName, () => {
-      if (id === "buyer-moment-filter") selectedBuyerMomentId = element.value;
-      renderBuyerMoments();
-    });
+    element.addEventListener(eventName, renderBuyerMoments);
     element.dataset.bound = "true";
   });
 }
@@ -1225,8 +1319,7 @@ function renderBuyerMoments() {
   if (!summaryTarget) return;
   const summaries = buyerMomentSummaries();
   const selected = selectedBuyerMomentSummary(summaries);
-  const select = document.getElementById("buyer-moment-filter");
-  if (select && selected) select.value = selected["Moment ID"];
+  renderBuyerMomentTimeline(summaries);
 
   if (!selected) {
     summaryTarget.innerHTML = "No buyer moments were detected in this snapshot.";
@@ -1254,19 +1347,19 @@ function renderBuyerMoments() {
     metric("Moment est. sales", fmt(rows.reduce((sum, row) => sum + numericCell(row, "Moment Estimated Sales"), 0), "Moment Estimated Sales"))
   ].join("");
   document.getElementById("buyer-moment-count").textContent =
-    `Showing ${fmt(rows.length, "Matching Listings")} ${selected["Buyer Moment"]} listings from ${selected["Moment Window"]}`;
+    `Showing ${fmt(rows.length, "Matching Listings")} ${selected["Buyer Moment"]} listings for ${selected["Moment Timeframe"]}`;
   summaryTarget.innerHTML =
-    `<strong>${escapeHtml(selected["Buyer Moment"])}</strong> is ranked by review-derived weekly sales velocity inside ${escapeHtml(selected["Moment Window"])}. The source is listing weekly review counts converted with the same eRank/listing calibration used by the Listings sales-cycle graph.`;
+    `<strong>${escapeHtml(selected["Buyer Moment"])}</strong> spans ${escapeHtml(selected["Moment Timeframe"])} and is ranked by review-derived weekly sales velocity from ${escapeHtml(selected["Moment Window"])} in the available review corpus.`;
 
   renderBar("buyer-moment-rollup-chart", summaries, "Moment Estimated Sales", "Buyer Moment", 20, "#0f766e");
   renderTable("buyer-moment-rollups", summaries, [
-    "Buyer Moment", "Moment Window", "Moment Estimated Sales", "Moment Review Count",
+    "Buyer Moment", "Moment Timeframe", "Moment Window", "Moment Estimated Sales", "Moment Review Count",
     "Matching Listings", "Listings With Velocity", "Top Shop", "Top Listing", "Matched Cues"
   ], 30);
   renderBuyerMomentWeekChart(rows);
   renderTable("buyer-moment-listings", rows, [
-    "Buyer Moment", "Moment Window", "Moment Avg Weekly Sales", "Moment Estimated Sales", "Moment Review Count",
-    "Moment Weeks With Demand", "Peak Moment Week", "Thumbnail", "Weekly Sales Graph",
+    "Thumbnail", "Moment Avg Weekly Sales", "Moment Estimated Sales", "Buyer Moment", "Moment Timeframe", "Moment Window",
+    "Moment Review Count", "Moment Weeks With Demand", "Peak Moment Week", "Weekly Sales Graph",
     "Shop", "Est. Daily Sales", "Est. 30D Sales", "Product Title", "Tags", "Best Guess Tags",
     "Product Category", "Product Substrate Category", "Production Tag", "Matched Cues",
     "Review Corpus Count", "Review Corpus 90D", "Review Corpus 365D", "Moment Source", "Listing URL"
@@ -2555,6 +2648,7 @@ function initCompanyProfile() {
 function initAsk() {
   const input = document.getElementById("sheet-question");
   const submit = document.getElementById("sheet-question-submit");
+  if (!input || !submit) return;
   if (submit && submit.dataset.bound !== "true") {
     submit.addEventListener("click", submitSheetQuestion);
     submit.dataset.bound = "true";
